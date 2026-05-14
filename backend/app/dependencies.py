@@ -1,20 +1,9 @@
-import jwt
-import base64
 from fastapi import Depends, HTTPException
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from typing import Optional
-from app.config import settings
 from app.db import supabase
 
 _bearer = HTTPBearer(auto_error=False)
-
-
-def _jwt_secret() -> bytes:
-    """Supabase stores the JWT secret as a base64-encoded value — decode it for PyJWT."""
-    try:
-        return base64.b64decode(settings.supabase_jwt_secret)
-    except Exception:
-        return settings.supabase_jwt_secret.encode()
 
 
 async def get_current_user(
@@ -23,20 +12,11 @@ async def get_current_user(
     """Return the user UUID from a verified Supabase JWT, or None for anonymous requests."""
     if creds is None:
         return None
-    if not settings.supabase_jwt_secret:
-        raise HTTPException(status_code=500, detail="JWT secret not configured")
     try:
-        payload = jwt.decode(
-            creds.credentials,
-            _jwt_secret(),
-            algorithms=["HS256"],
-            audience="authenticated",
-        )
-        user_id: str = payload["sub"]
-    except jwt.ExpiredSignatureError:
-        raise HTTPException(status_code=401, detail="Token expired")
-    except jwt.InvalidTokenError:
-        raise HTTPException(status_code=401, detail="Invalid token")
+        response = supabase.auth.get_user(creds.credentials)
+        user_id = str(response.user.id)
+    except Exception:
+        raise HTTPException(status_code=401, detail="Invalid or expired token")
 
     # Lazy-create public.users row on first valid JWT
     existing = supabase.table("users").select("id").eq("id", user_id).execute()
