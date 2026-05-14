@@ -3,7 +3,7 @@ from typing import Optional, AsyncGenerator
 from openai import AsyncOpenAI
 
 from app.config import settings
-from app.services.memory import get_memory_facts
+from app.services.memory import get_memories_for_prompt
 from app.services.messages import get_recent_messages
 
 _openai = AsyncOpenAI(api_key=settings.openai_api_key, base_url=settings.openai_base_url)
@@ -42,7 +42,7 @@ _TEMPERATURE = 0.8
 async def build_system_prompt(user_id: Optional[str]) -> str:
     """Fetch memories for user and return the fully-rendered system prompt."""
     facts = (
-        await get_memory_facts(user_id)
+        await get_memories_for_prompt(user_id)
         if user_id
         else "No information yet about this person."
     )

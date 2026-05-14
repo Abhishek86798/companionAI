@@ -11,8 +11,7 @@ from app.services.messages import (
     save_messages,
     get_recent_messages,
 )
-from app.services.extractor import extract_and_store
-from app.services.summarizer import maybe_summarize
+from app.services.memory import extract_and_store_memories, summarize_memories
 from app.services.safety import check_safety, log_safety_event
 from app.services.rate_limiter import check_and_increment
 
@@ -95,8 +94,8 @@ async def send_message(
             {"role": "user", "content": body.content},
             {"role": "assistant", "content": ai_content},
         ]
-        background_tasks.add_task(extract_and_store, user_id, recent)
-        background_tasks.add_task(maybe_summarize, user_id)
+        background_tasks.add_task(extract_and_store_memories, user_id, recent)
+        background_tasks.add_task(summarize_memories, user_id)
     else:
         conversation_id = body.conversation_id or uuid.uuid4()
         message_id = uuid.uuid4()
