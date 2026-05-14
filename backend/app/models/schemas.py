@@ -42,3 +42,17 @@ class MemoryFact(BaseModel):
 
 class MemoriesResponse(BaseModel):
     memories: list[MemoryFact]
+
+
+class PersonaUpsert(BaseModel):
+    companion_name: Optional[str] = None
+    tone: Optional[str] = None
+    expectation: Optional[str] = None
+    open_field: Optional[str] = None
+
+
+class PersonaResponse(BaseModel):
+    companion_name: str
+    tone: Optional[str] = None
+    expectation: Optional[str] = None
+    open_field: Optional[str] = None
