@@ -25,7 +25,7 @@ async def get_persona(
         .maybe_single()
         .execute()
     )
-    if not result.data:
+    if not result:
         return _DEFAULTS
     return PersonaResponse(**result.data)
 
@@ -45,10 +45,12 @@ async def upsert_persona(
     if body.open_field is not None:
         payload["open_field"] = body.open_field
 
+    supabase.table("persona").upsert(payload, on_conflict="user_id").execute()
     result = (
         supabase.table("persona")
-        .upsert(payload, on_conflict="user_id")
         .select("companion_name, tone, expectation, open_field")
+        .eq("user_id", user_id)
+        .maybe_single()
         .execute()
     )
-    return PersonaResponse(**result.data[0])
+    return PersonaResponse(**result.data)
