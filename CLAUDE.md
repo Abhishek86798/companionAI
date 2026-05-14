@@ -30,7 +30,7 @@ uvicorn app.main:app --reload --port 8000
 ```
 Background (Windows, persists across sessions):
 ```powershell
-Start-Process powershell -ArgumentList "-NoProfile -Command `"cd 'D:\CODES\Trionix Projects\companion\backend'; .venv\Scripts\uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload`"" -WindowStyle Hidden -PassThru -RedirectStandardOutput ..\backend_out.log -RedirectStandardError ..\backend_err.log
+Start-Process powershell -ArgumentList "-NoProfile -Command `"cd 'D:\CODES\Trionix Projects\companion\backend'; .venv\Scripts\uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload --reload-dir app`"" -WindowStyle Hidden -PassThru -RedirectStandardOutput ..\backend_out.log -RedirectStandardError ..\backend_err.log
 ```
 
 ### Web

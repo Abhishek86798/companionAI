@@ -1,4 +1,5 @@
 import jwt
+import base64
 from fastapi import Depends, HTTPException
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from typing import Optional
@@ -6,6 +7,14 @@ from app.config import settings
 from app.db import supabase
 
 _bearer = HTTPBearer(auto_error=False)
+
+
+def _jwt_secret() -> bytes:
+    """Supabase stores the JWT secret as a base64-encoded value — decode it for PyJWT."""
+    try:
+        return base64.b64decode(settings.supabase_jwt_secret)
+    except Exception:
+        return settings.supabase_jwt_secret.encode()
 
 
 async def get_current_user(
@@ -19,7 +28,7 @@ async def get_current_user(
     try:
         payload = jwt.decode(
             creds.credentials,
-            settings.supabase_jwt_secret,
+            _jwt_secret(),
             algorithms=["HS256"],
             audience="authenticated",
         )
