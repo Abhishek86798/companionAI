@@ -25,10 +25,10 @@ export default function ChatBubble({ message }: { message: ChatMessage }) {
         <div className="flex flex-col" style={{ maxWidth: "80%" }}>
           <div
             role="alert"
-            className="px-4 py-3 text-sm leading-relaxed text-[#F0EDE8]"
+            className="px-4 py-3 text-sm leading-relaxed text-[var(--color-text)]"
             style={{
-              background: "#1E1A3E",
-              borderLeft: "4px solid #8B7CF6",
+              background: "var(--color-crisis-bg)",
+              borderLeft: "4px solid var(--color-crisis)",
               borderRadius: "18px 18px 18px 4px",
             }}
           >
@@ -49,7 +49,7 @@ export default function ChatBubble({ message }: { message: ChatMessage }) {
           <div
             className="px-4 py-3 text-sm leading-relaxed text-white"
             style={{
-              background: "#FF6B35",
+              background: "var(--color-primary)",
               borderRadius: "18px 18px 4px 18px",
               fontWeight: 400,
             }}
@@ -71,25 +71,18 @@ export default function ChatBubble({ message }: { message: ChatMessage }) {
     <div className="flex justify-start mb-4 bubble-slide-up">
       <div className="flex flex-col" style={{ maxWidth: "80%" }}>
         <div
-          className="px-4 py-3 text-sm leading-relaxed text-[#F0EDE8]"
+          className="px-4 py-3 text-sm leading-relaxed text-[var(--color-text)]"
           style={{
-            background: "#22223A",
+            background: "var(--color-elevated)",
             borderRadius: isEmpty ? "18px" : "18px 18px 18px 4px",
             fontWeight: 400,
           }}
         >
           {isEmpty ? (
-            // Typing indicator — 3 dots
             <span className="flex gap-1.5 items-center h-4 py-0.5">
               <span className="typing-dot" />
-              <span
-                className="typing-dot"
-                style={{ animationDelay: "150ms" }}
-              />
-              <span
-                className="typing-dot"
-                style={{ animationDelay: "300ms" }}
-              />
+              <span className="typing-dot" style={{ animationDelay: "150ms" }} />
+              <span className="typing-dot" style={{ animationDelay: "300ms" }} />
             </span>
           ) : (
             <>
@@ -97,7 +90,7 @@ export default function ChatBubble({ message }: { message: ChatMessage }) {
               {isStreaming && (
                 <span
                   className="inline-block w-0.5 h-3.5 ml-0.5 align-middle animate-pulse"
-                  style={{ background: "#FF6B35", opacity: 0.8 }}
+                  style={{ background: "var(--color-primary)", opacity: 0.8 }}
                 />
               )}
             </>

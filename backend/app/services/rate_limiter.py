@@ -34,6 +34,7 @@ async def check_and_increment(
 
 async def _check_increment_user(user_id: str, today: str) -> int:
     limit = settings.free_tier_daily_limit
+    # maybe_single().execute() returns None (not APIResponse) when 0 rows found
     row = (
         supabase.table("daily_usage")
         .select("id,msg_count")
@@ -42,7 +43,7 @@ async def _check_increment_user(user_id: str, today: str) -> int:
         .maybe_single()
         .execute()
     )
-    current = row.data["msg_count"] if row.data else 0
+    current = row.data["msg_count"] if (row is not None and row.data) else 0
 
     if current >= limit:
         raise HTTPException(
@@ -50,12 +51,13 @@ async def _check_increment_user(user_id: str, today: str) -> int:
             detail="Daily message limit reached. Kal phir aana!",
         )
 
-    _upsert_row(row.data, {"user_id": user_id, "date": today}, current)
+    _upsert_row(row.data if row is not None else None, {"user_id": user_id, "date": today}, current)
     return limit - (current + 1)
 
 
 async def _check_increment_anon(anon_session_id: str, today: str) -> int:
     limit = settings.anon_msg_limit
+    # maybe_single().execute() returns None (not APIResponse) when 0 rows found
     row = (
         supabase.table("daily_usage")
         .select("id,msg_count")
@@ -64,7 +66,7 @@ async def _check_increment_anon(anon_session_id: str, today: str) -> int:
         .maybe_single()
         .execute()
     )
-    current = row.data["msg_count"] if row.data else 0
+    current = row.data["msg_count"] if (row is not None and row.data) else 0
 
     if current >= limit:
         raise HTTPException(
@@ -72,7 +74,7 @@ async def _check_increment_anon(anon_session_id: str, today: str) -> int:
             detail="anon_limit",
         )
 
-    _upsert_row(row.data, {"anon_session_id": anon_session_id, "date": today}, current)
+    _upsert_row(row.data if row is not None else None, {"anon_session_id": anon_session_id, "date": today}, current)
     return limit - (current + 1)
 
 

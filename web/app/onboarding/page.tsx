@@ -83,7 +83,6 @@ export default function OnboardingPage() {
   const [direction, setDirection] = useState<Direction>("forward");
   const [mounted, setMounted] = useState(false);
 
-  // Resume from last incomplete step
   useEffect(() => {
     if (localStorage.getItem(LS_DONE) === "true") {
       router.replace("/chat");
@@ -130,8 +129,6 @@ export default function OnboardingPage() {
   if (!mounted) return null;
 
   const c = COPY[lang];
-
-  // Slide direction: forward = slide left out, back = slide right out
   const exitTranslate =
     direction === "forward" ? "-translate-x-5" : "translate-x-5";
   const slideClass = exiting
@@ -140,10 +137,11 @@ export default function OnboardingPage() {
 
   return (
     <div
-      className="min-h-screen flex flex-col items-center justify-center px-4 py-8"
+      className="flex flex-col items-center justify-center px-4 py-8"
       style={{
+        minHeight: "100dvh",
         background:
-          "radial-gradient(ellipse at 50% -20%, rgba(255,107,53,0.12) 0%, transparent 70%), #0F0F14",
+          "radial-gradient(ellipse at 50% -20%, rgba(255,107,53,0.12) 0%, transparent 70%), var(--color-bg)",
       }}
     >
       <div className="w-full max-w-sm">
@@ -156,16 +154,16 @@ export default function OnboardingPage() {
               style={{
                 width: i === step ? "24px" : "6px",
                 backgroundColor:
-                  i < step ? "#FF6B35" : i === step ? "#FF6B35" : "rgba(255,255,255,0.1)",
+                  i <= step
+                    ? "var(--color-primary)"
+                    : "rgba(255,255,255,0.1)",
               }}
             />
           ))}
         </div>
 
         {/* Step content */}
-        <div
-          className={`transition-all duration-200 ease-in-out ${slideClass}`}
-        >
+        <div className={`transition-all duration-200 ease-in-out ${slideClass}`}>
           {step === 0 && (
             <LanguageStep
               lang={lang}
@@ -201,6 +199,39 @@ export default function OnboardingPage() {
   );
 }
 
+/* ─── Shared input style ─────────────────────────────────────────────────── */
+
+const inputCls =
+  "w-full px-4 py-3 text-sm rounded-xl text-[var(--color-text)] placeholder:text-[var(--color-text-dim)] caret-[var(--color-primary)]";
+
+const inputInline = {
+  backgroundColor: "var(--color-elevated)",
+  border: "1px solid var(--color-border)",
+};
+
+/* ─── Back button ────────────────────────────────────────────────────────── */
+
+function BackButton({ onClick }: { onClick: () => void }) {
+  return (
+    <button
+      onClick={onClick}
+      className="flex items-center gap-1 text-sm transition-colors text-[var(--color-text-muted)] hover:text-[var(--color-text)]"
+      style={{ minHeight: 44 }}
+    >
+      <svg
+        className="w-4 h-4"
+        fill="none"
+        viewBox="0 0 24 24"
+        stroke="currentColor"
+        strokeWidth={2}
+      >
+        <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
+      </svg>
+      Back
+    </button>
+  );
+}
+
 /* ─── Step 1: Language Select ─────────────────────────────────────────────── */
 
 function LanguageStep({
@@ -217,17 +248,14 @@ function LanguageStep({
       <div className="text-center mb-8">
         <div
           className="w-14 h-14 rounded-2xl mx-auto mb-4 flex items-center justify-center text-white text-2xl font-bold"
-          style={{ backgroundColor: "#FF6B35" }}
+          style={{ backgroundColor: "var(--color-primary)" }}
         >
           A
         </div>
-        <h1
-          className="text-2xl font-semibold"
-          style={{ color: "#F0EDE8" }}
-        >
+        <h1 className="text-2xl font-semibold text-[var(--color-text)]">
           Apni bhasha chuno
         </h1>
-        <p className="text-sm mt-1" style={{ color: "#9B96A0" }}>
+        <p className="text-sm mt-1 text-[var(--color-text-muted)]">
           Choose your preferred language
         </p>
       </div>
@@ -240,31 +268,37 @@ function LanguageStep({
             className="w-full flex items-center justify-between px-5 py-4 rounded-xl transition-all"
             style={{
               backgroundColor:
-                lang === l.value ? "rgba(255,107,53,0.12)" : "#1A1A2E",
+                lang === l.value
+                  ? "rgba(255,107,53,0.12)"
+                  : "var(--color-surface)",
               border: `1px solid ${
                 lang === l.value
                   ? "rgba(255,107,53,0.5)"
-                  : "rgba(255,255,255,0.07)"
+                  : "var(--color-border)"
               }`,
+              minHeight: 52,
             }}
           >
             <div className="text-left">
               <p
                 className="font-medium"
                 style={{
-                  color: lang === l.value ? "#FF6B35" : "#F0EDE8",
+                  color:
+                    lang === l.value
+                      ? "var(--color-primary)"
+                      : "var(--color-text)",
                 }}
               >
                 {l.label}
               </p>
-              <p className="text-xs mt-0.5" style={{ color: "#9B96A0" }}>
+              <p className="text-xs mt-0.5 text-[var(--color-text-muted)]">
                 {l.sub}
               </p>
             </div>
             {lang === l.value && (
               <div
                 className="w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0"
-                style={{ backgroundColor: "#FF6B35" }}
+                style={{ backgroundColor: "var(--color-primary)" }}
               >
                 <svg
                   className="w-3 h-3 text-white"
@@ -287,8 +321,12 @@ function LanguageStep({
 
       <button
         onClick={onNext}
-        className="w-full py-3.5 rounded-xl font-semibold text-white transition-all active:scale-95"
-        style={{ backgroundColor: "#FF6B35", height: "52px", borderRadius: "14px" }}
+        className="w-full font-semibold text-white transition-all active:scale-[0.97]"
+        style={{
+          backgroundColor: "var(--color-primary)",
+          height: 52,
+          borderRadius: 14,
+        }}
       >
         Continue →
       </button>
@@ -296,7 +334,7 @@ function LanguageStep({
   );
 }
 
-/* ─── Step 2: Meet Arjun ──────────────────────────────────────────────────── */
+/* ─── Step 2: Meet Arjun ─────────────────────────────────────────────────── */
 
 function PersonaStep({
   lang,
@@ -313,55 +351,47 @@ function PersonaStep({
 }) {
   return (
     <div className="text-center">
-      {/* Back button */}
       <div className="flex mb-6">
-        <button
-          onClick={onBack}
-          className="flex items-center gap-1 text-sm transition-colors"
-          style={{ color: "#9B96A0" }}
-        >
-          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-            <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
-          </svg>
-          Back
-        </button>
+        <BackButton onClick={onBack} />
       </div>
 
-      {/* Pulsing avatar */}
       <div
         className="w-20 h-20 rounded-full mx-auto mb-6 flex items-center justify-center text-white text-4xl font-bold avatar-pulse"
-        style={{ backgroundColor: "#FF6B35" }}
+        style={{ backgroundColor: "var(--color-primary)" }}
       >
         A
       </div>
 
-      <h2
-        className="text-2xl font-semibold mb-1"
-        style={{ color: "#F0EDE8" }}
-      >
+      <h2 className="text-2xl font-semibold mb-1 text-[var(--color-text)]">
         {lang === "hindi" ? "मैं अर्जुन हूँ" : "Main Arjun hoon"}
       </h2>
-      <p className="text-sm font-medium mb-6" style={{ color: "#FF6B35" }}>
+      <p
+        className="text-sm font-medium mb-6"
+        style={{ color: "var(--color-primary)" }}
+      >
         {lang === "hindi" ? "आपका अपना दोस्त" : "Tera apna dost"} 🤝
       </p>
 
-      {/* Intro card */}
       <div
         className="rounded-xl px-5 py-4 text-left mb-8"
         style={{
-          backgroundColor: "#1A1A2E",
-          border: "1px solid rgba(255,255,255,0.07)",
+          backgroundColor: "var(--color-surface)",
+          border: "1px solid var(--color-border)",
         }}
       >
-        <p className="text-sm leading-relaxed" style={{ color: "#9B96A0" }}>
+        <p className="text-sm leading-relaxed text-[var(--color-text-muted)]">
           {intro}
         </p>
       </div>
 
       <button
         onClick={onNext}
-        className="w-full font-semibold text-white transition-all active:scale-95"
-        style={{ backgroundColor: "#FF6B35", height: "52px", borderRadius: "14px" }}
+        className="w-full font-semibold text-white transition-all active:scale-[0.97]"
+        style={{
+          backgroundColor: "var(--color-primary)",
+          height: 52,
+          borderRadius: 14,
+        }}
       >
         {ctaLabel}
       </button>
@@ -369,7 +399,7 @@ function PersonaStep({
   );
 }
 
-/* ─── Step 3: Intake Form ─────────────────────────────────────────────────── */
+/* ─── Step 3: Intake Form ────────────────────────────────────────────────── */
 
 function IntakeStep({
   c,
@@ -388,50 +418,24 @@ function IntakeStep({
 }) {
   const canSubmit = name.trim() && city.trim() && situation.trim();
 
-  const inputStyle = {
-    backgroundColor: "#22223A",
-    border: "1px solid rgba(255,255,255,0.07)",
-    color: "#F0EDE8",
-    borderRadius: "12px",
-    outline: "none",
-  };
-
-  const focusStyle = "focus:ring-2 focus:ring-orange-500/40";
-
   return (
     <div>
-      {/* Back button */}
       <div className="flex mb-6">
-        <button
-          onClick={onBack}
-          className="flex items-center gap-1 text-sm"
-          style={{ color: "#9B96A0" }}
-        >
-          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-            <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
-          </svg>
-          Back
-        </button>
+        <BackButton onClick={onBack} />
       </div>
 
       <div className="mb-6">
-        <h2
-          className="text-xl font-semibold mb-1"
-          style={{ color: "#F0EDE8" }}
-        >
+        <h2 className="text-xl font-semibold mb-1 text-[var(--color-text)]">
           {c.heading}
         </h2>
-        <p className="text-xs" style={{ color: "#9B96A0" }}>
+        <p className="text-xs text-[var(--color-text-muted)]">
           {c.subheading}
         </p>
       </div>
 
       <div className="space-y-4 mb-6">
         <div>
-          <label
-            className="block text-xs font-medium mb-1.5"
-            style={{ color: "#9B96A0" }}
-          >
+          <label className="block text-xs font-medium mb-1.5 text-[var(--color-text-muted)]">
             {c.nameQ}
           </label>
           <input
@@ -439,18 +443,12 @@ function IntakeStep({
             value={name}
             onChange={(e) => setName(e.target.value)}
             placeholder={c.nameP}
-            className={`w-full px-4 py-3 text-sm ${focusStyle}`}
-            style={{
-              ...inputStyle,
-              caretColor: "#FF6B35",
-            }}
+            className={inputCls}
+            style={inputInline}
           />
         </div>
         <div>
-          <label
-            className="block text-xs font-medium mb-1.5"
-            style={{ color: "#9B96A0" }}
-          >
+          <label className="block text-xs font-medium mb-1.5 text-[var(--color-text-muted)]">
             {c.cityQ}
           </label>
           <input
@@ -458,18 +456,12 @@ function IntakeStep({
             value={city}
             onChange={(e) => setCity(e.target.value)}
             placeholder={c.cityP}
-            className={`w-full px-4 py-3 text-sm ${focusStyle}`}
-            style={{
-              ...inputStyle,
-              caretColor: "#FF6B35",
-            }}
+            className={inputCls}
+            style={inputInline}
           />
         </div>
         <div>
-          <label
-            className="block text-xs font-medium mb-1.5"
-            style={{ color: "#9B96A0" }}
-          >
+          <label className="block text-xs font-medium mb-1.5 text-[var(--color-text-muted)]">
             {c.sitQ}
           </label>
           <textarea
@@ -477,11 +469,8 @@ function IntakeStep({
             onChange={(e) => setSituation(e.target.value)}
             placeholder={c.sitP}
             rows={3}
-            className={`w-full px-4 py-3 text-sm resize-none ${focusStyle}`}
-            style={{
-              ...inputStyle,
-              caretColor: "#FF6B35",
-            }}
+            className={`${inputCls} resize-none`}
+            style={inputInline}
           />
         </div>
       </div>
@@ -489,11 +478,11 @@ function IntakeStep({
       <button
         onClick={onFinish}
         disabled={!canSubmit}
-        className="w-full font-semibold text-white transition-all active:scale-95"
+        className="w-full font-semibold text-white transition-all active:scale-[0.97]"
         style={{
-          backgroundColor: "#FF6B35",
-          height: "52px",
-          borderRadius: "14px",
+          backgroundColor: "var(--color-primary)",
+          height: 52,
+          borderRadius: 14,
           opacity: canSubmit ? 1 : 0.35,
           cursor: canSubmit ? "pointer" : "not-allowed",
         }}

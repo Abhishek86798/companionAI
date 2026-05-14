@@ -337,6 +337,9 @@ Run the following SQL in Supabase's SQL editor in order. Each block is in Backen
 
 ---
 
+
+
+
 ## Phase 6 — Memory Management UI (Settings)
 
 **Goal:** Users can view what Arjun remembers about them and delete individual facts. Push notification preferences are saved.
@@ -560,6 +563,227 @@ The sequence above is non-negotiable. Here's why each phase must come before the
 | 9 (Deploy) | Launch | Last step, not first. |
 
 ---
+
+Phase 5.5 — Architecture Improvements (Before Beta)
+Goal: Fix 6 correctness and reliability issues that must be resolved before real users touch the product. All are small effort, high impact. Do not skip to Phase 6 until all 6 are done.
+
+Fix 1 — Conversation Continuity on Auth
+Problem: Anonymous user has a conversation, signs up, conversation is orphaned. They lose their chat history at the exact moment they committed to the product.
+Backend
+
+ Add nullable user_id to public.conversations (already nullable if anon) — verify this is the case
+ Add endpoint or logic in POST /api/v1/message: if request includes anon_conversation_id in body AND user is now authenticated, transfer ownership:
+
+python  # In chat router — on first authed message
+  if anon_conversation_id and user_id:
+      supabase.table("conversations")\
+          .update({"user_id": user_id})\
+          .eq("id", anon_conversation_id)\
+          .is_("user_id", None)\  # only if currently unowned
+          .execute()
+
+ Also transfer messages rows:
+
+python  supabase.table("messages")\
+      .update({"user_id": user_id})\
+      .eq("conversation_id", anon_conversation_id)\
+      .execute()
+Frontend
+
+ Store conversation_id in localStorage as active_conversation_id from the first anonymous message response
+ On auth success (onAuthStateChange fires with session): read active_conversation_id from localStorage, include it as anon_conversation_id in the next POST /api/v1/message body
+ After transfer confirmed: update localStorage active_conversation_id — it's now the same ID but owned
+ Chat page loads correctly with full pre-auth history visible
+
+Schema change
+sql-- conversations.user_id must be nullable for anonymous conversations
+ALTER TABLE public.conversations ALTER COLUMN user_id DROP NOT NULL;
+
+-- messages.user_id also nullable for anonymous
+ALTER TABLE public.messages ALTER COLUMN user_id DROP NOT NULL;
+✅ Fix 1 Done Criteria
+
+Anonymous user sends 3 messages, signs up, chat history is still visible
+conversations row user_id is updated from NULL to authenticated user UUID
+No duplicate or lost messages after auth transfer
+
+
+Fix 2 — Memory Extraction Feedback Loop
+Problem: Memory extraction runs silently in the background. Failures are invisible. The AI quietly gets dumber and you don't know why.
+Backend — New logging table
+sqlCREATE TABLE public.memory_extraction_log (
+  id             UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id        UUID REFERENCES public.users(id) ON DELETE SET NULL,
+  status         TEXT NOT NULL CHECK (status IN ('success', 'failed', 'partial')),
+  facts_found    INT DEFAULT 0,
+  error_message  TEXT,
+  created_at     TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX idx_memory_log_user_id ON public.memory_extraction_log(user_id);
+CREATE INDEX idx_memory_log_created_at ON public.memory_extraction_log(created_at DESC);
+
+ Run migration in Supabase SQL editor
+ Update app/services/extractor.py — wrap extraction in try/except, write result to log:
+
+python  try:
+      facts = await extract_facts(messages)
+      await upsert_facts(user_id, facts)
+      await log_extraction(user_id, status="success", facts_found=len(facts))
+  except json.JSONDecodeError as e:
+      await log_extraction(user_id, status="failed", error=f"JSON parse error: {e}")
+  except Exception as e:
+      await log_extraction(user_id, status="failed", error=str(e))
+      # Do NOT re-raise — background task failure must not crash the main response
+
+ Update app/services/summarizer.py — same pattern, log success/failed
+ Add write_extraction_log() helper to app/services/memory.py
+
+Verify
+
+ Deliberately break the extraction prompt (invalid JSON response) — confirm log row is written with status='failed'
+ Fix the prompt — confirm next extraction writes status='success'
+ Query: SELECT status, count(*) FROM memory_extraction_log GROUP BY status — run after 10 test messages
+
+✅ Fix 2 Done Criteria
+
+Every memory extraction attempt (success or failure) writes a row to memory_extraction_log
+A deliberately broken extraction does NOT crash the main chat response
+Log is queryable from Supabase dashboard
+
+
+Fix 3 — System Prompt Token Budget
+Problem: Memories + persona + conversation history grow unbounded. Eventually hits context window limit, causing silent truncation or OpenAI errors.
+
+ Add constants to app/config.py:
+
+python  MAX_MEMORY_CHARS: int = 1200    # ~300 tokens — enough for 6 memory facts
+  MAX_PERSONA_CHARS: int = 600    # ~150 tokens — persona fields combined
+  MAX_HISTORY_MESSAGES: int = 10  # already in TRD — enforce it here
+
+ Add sanitize_and_truncate() helper in app/services/ai.py:
+
+python  def truncate_to_budget(text: str, max_chars: int) -> str:
+      if len(text) <= max_chars:
+          return text
+      # Truncate at last complete sentence within budget
+      truncated = text[:max_chars]
+      last_period = truncated.rfind('.')
+      return truncated[:last_period + 1] if last_period > 0 else truncated
+
+ In build_system_prompt(): apply truncation to memories block and persona block before injection
+ In stream_response(): enforce MAX_HISTORY_MESSAGES — slice to last N messages before passing to OpenAI
+ Add debug log in dev mode: log total estimated token count before each OpenAI call
+
+✅ Fix 3 Done Criteria
+
+A user with 20+ memory facts still sends successfully — prompt doesn't exceed budget
+History slice is confirmed: only last 10 messages are sent to OpenAI (check in dev logs)
+truncate_to_budget() has a unit test with a string over the limit
+
+
+Fix 6 — IST Midnight Reset
+Problem: CURRENT_DATE in Postgres uses UTC. Daily quota resets at 5:30 AM IST, not midnight. Users hitting the limit at 11 PM wait 6.5 hours instead of 1.
+
+ Add to app/config.py:
+
+python  from zoneinfo import ZoneInfo
+  IST = ZoneInfo("Asia/Kolkata")
+
+ Update app/services/rate_limiter.py — replace all date.today() calls:
+
+python  from datetime import datetime
+  from app.config import IST
+
+  def get_ist_today() -> date:
+      return datetime.now(IST).date()
+Use get_ist_today() everywhere a date is compared in daily_usage queries
+
+ Update daily_usage insert/upsert to use IST date, not UTC date
+ Test: at 11 PM IST (5:30 PM UTC), hit the limit. Verify quota resets at midnight IST (6:30 PM UTC), not 5:30 AM IST next day
+
+✅ Fix 6 Done Criteria
+
+get_ist_today() returns the correct IST date regardless of server timezone
+Rate limiter uses IST date in all daily_usage queries
+Confirmed with a manual test: limit resets at IST midnight
+
+
+Fix 7 — OpenAI Down Graceful Message
+Problem: If OpenAI returns a 500, times out, or rate-limits, user sees a raw error or broken stream instead of a human message.
+
+ In app/services/ai.py — wrap the OpenAI call:
+
+python  from openai import OpenAIError, APITimeoutError, RateLimitError
+
+  async def stream_response(...) -> AsyncGenerator:
+      try:
+          async for token in _call_openai(...):
+              yield token
+      except RateLimitError:
+          yield "Yaar thoda busy hoon abhi. Ek minute baad try kar. 🙏"
+          logger.error("OpenAI rate limit hit", extra={"user_id": user_id})
+      except APITimeoutError:
+          yield "Connection slow hai abhi. Dobara bhej yaar. 📶"
+          logger.error("OpenAI timeout", extra={"user_id": user_id})
+      except OpenAIError as e:
+          yield "Kuch technical gadbad hai. Thodi der mein try kar. 🔧"
+          logger.error(f"OpenAI error: {e}", extra={"user_id": user_id})
+          # Sentry will capture this via the logger
+
+ Verify Sentry captures these errors (they're logged but not re-raised)
+ Test: temporarily set an invalid OpenAI API key → send a message → confirm graceful message appears, no stack trace exposed
+
+✅ Fix 7 Done Criteria
+
+Invalid API key returns a friendly Hinglish message, not a 500 error
+OpenAI errors are logged to Sentry
+No raw error details are exposed to the frontend
+
+
+Fix 8 — Intake → Memories Conversion
+Problem: Name, city, and situation from onboarding intake sit in localStorage and inform the first AI message. But they're never written to public.memories. After the summarizer runs at 20 messages, Arjun may "forget" the user's name and city.
+
+ In app/routers/chat.py — on first message from authenticated user (message count == 0 for this user), check if intake_data is passed in the request body:
+Add optional field to MessageRequest:
+
+python  class MessageRequest(BaseModel):
+      content: str = Field(..., min_length=1, max_length=2000)
+      conversation_id: UUID | None = None
+      anon_conversation_id: UUID | None = None   # for Fix 1
+      intake_data: IntakeData | None = None       # for Fix 8
+
+  class IntakeData(BaseModel):
+      name: str | None = None
+      city: str | None = None
+      situation: str | None = None
+
+ In chat.py — after saving the first user message, before the AI call:
+
+python  if intake_data and is_first_message:
+      if intake_data.name:
+          await upsert_memory(user_id, "name", intake_data.name)
+      if intake_data.city:
+          await upsert_memory(user_id, "city", intake_data.city)
+      if intake_data.situation:
+          await upsert_memory(user_id, "situation", intake_data.situation)
+These run synchronously (not background task) — they must be in DB before the AI call builds the system prompt.
+
+ In src/api/chat.ts (frontend) — on the first message send:
+
+Read onboarding_data.intake from localStorage
+Include it as intake_data in the request body
+After confirmed send: clear intake_data from localStorage (it's now in DB)
+
+
+ Write upsert_memory() helper in app/services/memory.py if not already extracted
+
+✅ Fix 8 Done Criteria
+
+After first authenticated message, public.memories has rows for name, city, situation
+Verified in Supabase dashboard: 3 memory rows exist after first message
+Send 25 messages (triggering summarizer) — Arjun still knows the user's name after summarization
+intake_data is cleared from localStorage after successful first message
 
 *Document Owner: Founder / Solo Developer*  
 *Next Review: End of Phase 2*  

@@ -23,12 +23,15 @@ export default function MessageList({ messages }: Props) {
       role="log"
       aria-live="polite"
       aria-label="Conversation with Arjun"
-      className="flex-1 overflow-y-auto px-3 py-4"
+      className="flex-1 overflow-y-auto"
     >
-      {messages.map((m) => (
-        <ChatBubble key={m.id} message={m} />
-      ))}
-      <div ref={bottomRef} />
+      {/* min-h-full + justify-end pins messages to the bottom when few exist */}
+      <div className="flex flex-col justify-end min-h-full px-4 md:px-8 py-4 max-w-5xl mx-auto w-full">
+        {messages.map((m) => (
+          <ChatBubble key={m.id} message={m} />
+        ))}
+        <div ref={bottomRef} />
+      </div>
     </div>
   );
 }

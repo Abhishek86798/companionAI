@@ -5,9 +5,9 @@ class Settings(BaseSettings):
     supabase_url: str
     supabase_anon_key: str
     supabase_service_role_key: str
-    supabase_jwt_secret: str
     openai_api_key: str
     openai_base_url: str = "https://api.openai.com/v1"
+    supabase_jwt_secret: str = ""
     sentry_dsn: str = ""
     environment: str = "development"
     allowed_origins: str = "http://localhost:3000"
