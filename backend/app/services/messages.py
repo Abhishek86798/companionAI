@@ -55,3 +55,43 @@ async def get_recent_messages(user_id: str, limit: int = 10) -> list[dict]:
         .execute()
     )
     return [{"role": r["role"], "content": r["content"]} for r in result.data]
+
+
+async def save_user_message(user_id: str, conversation_id: str, content: str) -> None:
+    supabase.table("messages").insert({
+        "user_id": user_id,
+        "conversation_id": conversation_id,
+        "role": "user",
+        "content": content,
+    }).execute()
+
+
+async def save_assistant_message(user_id: str, conversation_id: str, content: str) -> str:
+    """Save assistant message and return its UUID."""
+    result = supabase.table("messages").insert({
+        "user_id": user_id,
+        "conversation_id": conversation_id,
+        "role": "assistant",
+        "content": content,
+    }).execute()
+    return result.data[0]["id"]
+
+
+async def get_messages_by_conversation(
+    user_id: str,
+    conversation_id: str,
+    page: int = 1,
+    page_size: int = 20,
+) -> list[dict]:
+    """Fetch paginated message history for a conversation, ordered oldest-first."""
+    offset = (page - 1) * page_size
+    result = (
+        supabase.table("messages")
+        .select("id, role, content, created_at, safety_flagged")
+        .eq("user_id", user_id)
+        .eq("conversation_id", conversation_id)
+        .order("created_at", desc=False)
+        .range(offset, offset + page_size - 1)
+        .execute()
+    )
+    return result.data

@@ -1,19 +1,23 @@
+import json
 import uuid
 from typing import Optional
 
-from fastapi import APIRouter, BackgroundTasks, Depends, Request, Response
+from fastapi import APIRouter, BackgroundTasks, Depends, Query, Request
+from fastapi.responses import StreamingResponse
 
-from app.dependencies import get_current_user
-from app.models.schemas import MessageRequest, MessageResponse
-from app.services.ai import build_system_prompt, _openai, _MODEL, _MAX_TOKENS, _TEMPERATURE
-from app.services.messages import (
-    get_or_create_conversation,
-    save_messages,
-    get_recent_messages,
-)
+from app.dependencies import get_current_user, require_current_user
+from app.models.schemas import ChatMessage, ConversationHistoryResponse, MessageRequest
+from app.services.ai import stream_response
 from app.services.memory import extract_and_store_memories, summarize_memories
-from app.services.safety import check_safety, log_safety_event
+from app.services.messages import (
+    get_messages_by_conversation,
+    get_or_create_conversation,
+    get_recent_messages,
+    save_assistant_message,
+    save_user_message,
+)
 from app.services.rate_limiter import check_and_increment
+from app.services.safety import check_safety, log_safety_event
 
 router = APIRouter()
 
@@ -24,86 +28,130 @@ _CRISIS_RESPONSE = (
 
 _ANON_COOKIE = "anon_session_id"
 
+_SSE_HEADERS = {
+    "Cache-Control": "no-cache",
+    "X-Accel-Buffering": "no",   # disable Nginx buffering
+    "Connection": "keep-alive",
+}
 
-@router.post("/message", response_model=MessageResponse)
+
+def _sse(payload: dict) -> str:
+    return f"data: {json.dumps(payload)}\n\n"
+
+
+# ── POST /message ─────────────────────────────────────────────────────────────
+
+@router.post("/message")
 async def send_message(
     body: MessageRequest,
     request: Request,
-    response: Response,
     background_tasks: BackgroundTasks,
     user_id: Optional[str] = Depends(get_current_user),
-) -> MessageResponse:
+) -> StreamingResponse:
     # 0. Safety check — MUST run first, no bypass, no exceptions
     safety = await check_safety(body.content)
     if safety.triggered:
+        crisis_id = uuid.uuid4()
+        crisis_conv = body.conversation_id or uuid.uuid4()
         background_tasks.add_task(
             log_safety_event, user_id, body.content, safety.trigger_type
         )
-        return MessageResponse(
-            message_id=uuid.uuid4(),
-            conversation_id=body.conversation_id or uuid.uuid4(),
-            content=_CRISIS_RESPONSE,
-            safety_triggered=True,
-            remaining_messages_today=None,
+
+        async def crisis_stream():
+            yield _sse({"type": "token", "content": _CRISIS_RESPONSE})
+            yield _sse({
+                "type": "done",
+                "message_id": str(crisis_id),
+                "conversation_id": str(crisis_conv),
+                "safety_triggered": True,
+                "remaining_messages_today": None,
+            })
+
+        return StreamingResponse(
+            crisis_stream(), media_type="text/event-stream", headers=_SSE_HEADERS
         )
 
-    # 1. Resolve anon session cookie (set on first anonymous request)
+    # 1. Resolve anon session cookie (generated on first anonymous request)
     anon_session_id: Optional[str] = None
+    new_cookie_value: Optional[str] = None
     if not user_id:
         anon_session_id = request.cookies.get(_ANON_COOKIE)
         if not anon_session_id:
             anon_session_id = str(uuid.uuid4())
-            response.set_cookie(
-                key=_ANON_COOKIE,
-                value=anon_session_id,
-                max_age=86400,  # 24 h
-                httponly=True,
-                samesite="lax",
-            )
+            new_cookie_value = anon_session_id
 
     # 2. Rate limit check + increment (raises 429 if over limit)
     remaining = await check_and_increment(user_id, anon_session_id)
 
-    # 3. Build memory-enriched system prompt + fetch history
-    system = await build_system_prompt(user_id)
-    history = await get_recent_messages(user_id) if user_id else []
-
-    # 4. Call AI (non-streaming; SSE is post-MVP per TRD §9.4)
-    completion = await _openai.chat.completions.create(
-        model=_MODEL,
-        messages=[{"role": "system", "content": system}]
-        + history
-        + [{"role": "user", "content": body.content}],
-        max_tokens=_MAX_TOKENS,
-        temperature=_TEMPERATURE,
-    )
-    ai_content = completion.choices[0].message.content
-
-    # 5. Persist + fire async memory tasks (authenticated users only)
+    # 3. Save user message before streaming (authenticated only; anon = stateless)
+    conv_id_str: Optional[str] = None
+    history: list[dict] = []
     if user_id:
-        conv_id = await get_or_create_conversation(
+        conv_id_str = await get_or_create_conversation(
             user_id,
             str(body.conversation_id) if body.conversation_id else None,
         )
-        assistant_msg_id = await save_messages(
-            user_id, conv_id, body.content, ai_content
-        )
-        conversation_id = uuid.UUID(conv_id)
-        message_id = uuid.UUID(assistant_msg_id)
-        recent = history[-3:] + [
-            {"role": "user", "content": body.content},
-            {"role": "assistant", "content": ai_content},
-        ]
-        background_tasks.add_task(extract_and_store_memories, user_id, recent)
-        background_tasks.add_task(summarize_memories, user_id)
-    else:
-        conversation_id = body.conversation_id or uuid.uuid4()
+        history = await get_recent_messages(user_id)
+        await save_user_message(user_id, conv_id_str, body.content)
+
+    conversation_id = uuid.UUID(conv_id_str) if conv_id_str else (body.conversation_id or uuid.uuid4())
+
+    # 4 + 5. Stream AI response; persist assistant message after stream ends
+    async def generate():
+        tokens: list[str] = []
+
+        try:
+            async for token in stream_response(user_id, conv_id_str, body.content):
+                tokens.append(token)
+                yield _sse({"type": "token", "content": token})
+        except Exception:
+            yield _sse({"type": "error", "detail": "AI service unavailable"})
+            return
+
+        ai_content = "".join(tokens)
         message_id = uuid.uuid4()
 
-    return MessageResponse(
-        message_id=message_id,
-        conversation_id=conversation_id,
-        content=ai_content,
-        safety_triggered=False,
-        remaining_messages_today=remaining,
+        if user_id and conv_id_str:
+            assistant_id = await save_assistant_message(user_id, conv_id_str, ai_content)
+            message_id = uuid.UUID(assistant_id)
+            recent = history[-3:] + [
+                {"role": "user", "content": body.content},
+                {"role": "assistant", "content": ai_content},
+            ]
+            background_tasks.add_task(extract_and_store_memories, user_id, recent)
+            background_tasks.add_task(summarize_memories, user_id)
+
+        yield _sse({
+            "type": "done",
+            "message_id": str(message_id),
+            "conversation_id": str(conversation_id),
+            "safety_triggered": False,
+            "remaining_messages_today": remaining,
+        })
+
+    headers = dict(_SSE_HEADERS)
+    if new_cookie_value:
+        headers["Set-Cookie"] = (
+            f"{_ANON_COOKIE}={new_cookie_value}; Max-Age=86400; HttpOnly; SameSite=lax; Path=/"
+        )
+
+    return StreamingResponse(generate(), media_type="text/event-stream", headers=headers)
+
+
+# ── GET /messages/{conversation_id} ──────────────────────────────────────────
+
+@router.get("/messages/{conversation_id}", response_model=ConversationHistoryResponse)
+async def get_messages(
+    conversation_id: uuid.UUID,
+    page: int = Query(default=1, ge=1),
+    user_id: str = Depends(require_current_user),
+) -> ConversationHistoryResponse:
+    page_size = 20
+    rows = await get_messages_by_conversation(
+        user_id, str(conversation_id), page=page, page_size=page_size
+    )
+    return ConversationHistoryResponse(
+        messages=[ChatMessage(**r) for r in rows],
+        page=page,
+        has_more=len(rows) == page_size,
     )
