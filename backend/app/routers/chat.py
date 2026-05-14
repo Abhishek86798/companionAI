@@ -13,6 +13,7 @@ from app.services.messages import (
 )
 from app.services.extractor import extract_and_store
 from app.services.summarizer import maybe_summarize
+from app.services.safety import check_safety, log_safety_event
 
 router = APIRouter()
 _openai = AsyncOpenAI(api_key=settings.openai_api_key, base_url=settings.openai_base_url)
@@ -40,6 +41,11 @@ Rules — follow these strictly:
    "Yaar, yeh sab share karna brave hai. Ek baar kisi trusted person se ya iCare helpline (9152987821) pe baat karna helpful ho sakta hai."
 7. Never give medical, legal, or financial advice."""
 
+_CRISIS_RESPONSE = (
+    "Yaar, yeh sab share karna brave hai. "
+    "Ek baar kisi trusted person se ya iCare helpline (9152987821) pe baat karna helpful ho sakta hai."
+)
+
 
 @router.post("/message", response_model=MessageResponse)
 async def send_message(
@@ -47,6 +53,20 @@ async def send_message(
     background_tasks: BackgroundTasks,
     user_id: Optional[str] = Depends(get_current_user),
 ) -> MessageResponse:
+    # 0. Safety check — MUST run first, no bypass, no exceptions
+    safety = await check_safety(body.content)
+    if safety.triggered:
+        background_tasks.add_task(
+            log_safety_event, user_id, body.content, safety.trigger_type
+        )
+        return MessageResponse(
+            message_id=uuid.uuid4(),
+            conversation_id=body.conversation_id or uuid.uuid4(),
+            content=_CRISIS_RESPONSE,
+            safety_triggered=True,
+            remaining_messages_today=None,
+        )
+
     # 1. Assemble memory-enriched system prompt
     memory_facts = (
         await get_memory_facts(user_id)
