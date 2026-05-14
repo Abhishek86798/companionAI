@@ -1,7 +1,9 @@
 import uuid
 from typing import Optional
-from fastapi import APIRouter, BackgroundTasks, Depends
+
+from fastapi import APIRouter, BackgroundTasks, Depends, Request, Response
 from openai import AsyncOpenAI
+
 from app.config import settings
 from app.dependencies import get_current_user
 from app.models.schemas import MessageRequest, MessageResponse
@@ -14,6 +16,7 @@ from app.services.messages import (
 from app.services.extractor import extract_and_store
 from app.services.summarizer import maybe_summarize
 from app.services.safety import check_safety, log_safety_event
+from app.services.rate_limiter import check_and_increment
 
 router = APIRouter()
 _openai = AsyncOpenAI(api_key=settings.openai_api_key, base_url=settings.openai_base_url)
@@ -46,10 +49,14 @@ _CRISIS_RESPONSE = (
     "Ek baar kisi trusted person se ya iCare helpline (9152987821) pe baat karna helpful ho sakta hai."
 )
 
+_ANON_COOKIE = "anon_session_id"
+
 
 @router.post("/message", response_model=MessageResponse)
 async def send_message(
     body: MessageRequest,
+    request: Request,
+    response: Response,
     background_tasks: BackgroundTasks,
     user_id: Optional[str] = Depends(get_current_user),
 ) -> MessageResponse:
@@ -67,7 +74,24 @@ async def send_message(
             remaining_messages_today=None,
         )
 
-    # 1. Assemble memory-enriched system prompt
+    # 1. Resolve anon session cookie (set on first anonymous request)
+    anon_session_id: Optional[str] = None
+    if not user_id:
+        anon_session_id = request.cookies.get(_ANON_COOKIE)
+        if not anon_session_id:
+            anon_session_id = str(uuid.uuid4())
+            response.set_cookie(
+                key=_ANON_COOKIE,
+                value=anon_session_id,
+                max_age=86400,  # 24 h
+                httponly=True,
+                samesite="lax",
+            )
+
+    # 2. Rate limit check + increment (raises 429 if over limit)
+    remaining = await check_and_increment(user_id, anon_session_id)
+
+    # 3. Assemble memory-enriched system prompt
     memory_facts = (
         await get_memory_facts(user_id)
         if user_id
@@ -75,10 +99,10 @@ async def send_message(
     )
     system = _SYSTEM_PROMPT.format(memory_facts=memory_facts)
 
-    # 2. Fetch recent message history for conversational context
+    # 4. Fetch recent message history for conversational context
     history = await get_recent_messages(user_id) if user_id else []
 
-    # 3. Call AI
+    # 5. Call AI
     completion = await _openai.chat.completions.create(
         model="openai/gpt-4o-mini",
         messages=[{"role": "system", "content": system}]
@@ -89,7 +113,7 @@ async def send_message(
     )
     ai_content = completion.choices[0].message.content
 
-    # 4. Persist + fire async memory tasks (authenticated users only)
+    # 6. Persist + fire async memory tasks (authenticated users only)
     if user_id:
         conv_id = await get_or_create_conversation(
             user_id,
@@ -115,5 +139,5 @@ async def send_message(
         conversation_id=conversation_id,
         content=ai_content,
         safety_triggered=False,
-        remaining_messages_today=None,
+        remaining_messages_today=remaining,
     )
