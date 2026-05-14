@@ -30,3 +30,15 @@ class ConversationHistoryResponse(BaseModel):
     messages: list[ChatMessage]
     page: int
     has_more: bool
+
+
+class MemoryFact(BaseModel):
+    id: UUID
+    category: str
+    fact: str
+    created_at: datetime
+    updated_at: datetime
+
+
+class MemoriesResponse(BaseModel):
+    memories: list[MemoryFact]
