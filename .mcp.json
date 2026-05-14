@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "supabase": {
+      "type": "http",
+      "url": "https://mcp.supabase.com/mcp?project_ref=lsuyajqnzfemlmhhmlem",
+      "headers": {
+        "Authorization": "Bearer sbp_3a947259b45c3ef43c9c4b8821043a57d81c091b"
+      }
+    }
+  }
+}
