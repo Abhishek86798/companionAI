@@ -1,19 +1,28 @@
+import re
 from typing import Optional, AsyncGenerator
 
 from openai import AsyncOpenAI
 
 from app.config import settings
+from app.db import supabase
 from app.services.memory import get_memories_for_prompt
 from app.services.messages import get_recent_messages
 
 _openai = AsyncOpenAI(api_key=settings.openai_api_key, base_url=settings.openai_base_url)
 
+_TONE_LABELS = {
+    "funny_chill": "Be funny and chill — use humor, banter, and light sarcasm like a best friend.",
+    "motivating": "Be motivating and energetic — hype them up, push them forward.",
+    "logical": "Be logical and analytical — think through problems clearly, skip the fluff.",
+    "just_listen": "Just listen — validate feelings, hold back advice unless asked.",
+}
+
 _SYSTEM_TEMPLATE = """\
-You are Arjun, a close Indian friend talking on WhatsApp. \
+You are {companion_name}, a close Indian friend talking on WhatsApp. \
 You speak Hinglish — the natural mix of Hindi and English that urban Indians use. \
 You are warm, present, non-judgmental. You listen and validate first. \
 You never claim to be an AI unless directly asked.
-
+{persona_section}
 What you know about this person:
 {memory_facts}
 
@@ -39,14 +48,67 @@ _MAX_TOKENS = 300
 _TEMPERATURE = 0.8
 
 
+def sanitize_persona_field(text: str, max_len: int = 500) -> str:
+    text = re.sub(r"```[\s\S]*?```", "", text)
+    text = re.sub(r"(?i)^system:\s*", "", text.strip())
+    return text.strip()[:max_len]
+
+
+def get_persona_for_prompt(user_id: str) -> dict:
+    result = (
+        supabase.table("persona")
+        .select("companion_name, tone, expectation, open_field")
+        .eq("user_id", user_id)
+        .maybe_single()
+        .execute()
+    )
+    if not result:
+        return {"companion_name": "Arjun", "tone": None, "expectation": None, "open_field": None}
+    return result.data
+
+
+def _build_persona_section(persona: dict) -> str:
+    lines = []
+    tone = persona.get("tone")
+    expectation = persona.get("expectation")
+
+    if tone:
+        label = _TONE_LABELS.get(tone)
+        if label:
+            lines.append(label)
+        else:
+            sanitized = sanitize_persona_field(tone)
+            if sanitized:
+                lines.append(f"Tone: {sanitized}")
+
+    if expectation:
+        sanitized = sanitize_persona_field(expectation)
+        if sanitized:
+            lines.append(f"What they want from you: {sanitized}")
+
+    return "\n".join(lines)
+
+
 async def build_system_prompt(user_id: Optional[str]) -> str:
-    """Fetch memories for user and return the fully-rendered system prompt."""
+    if user_id:
+        persona = get_persona_for_prompt(user_id)
+    else:
+        persona = {"companion_name": "Arjun", "tone": None, "expectation": None, "open_field": None}
+
+    companion_name = persona.get("companion_name") or "Arjun"
+    persona_section = _build_persona_section(persona)
+
     facts = (
         await get_memories_for_prompt(user_id)
         if user_id
         else "No information yet about this person."
     )
-    return _SYSTEM_TEMPLATE.format(memory_facts=facts)
+
+    return _SYSTEM_TEMPLATE.format(
+        companion_name=companion_name,
+        persona_section=persona_section,
+        memory_facts=facts,
+    )
 
 
 async def stream_response(
@@ -54,18 +116,6 @@ async def stream_response(
     conversation_id: Optional[str],
     content: str,
 ) -> AsyncGenerator[str, None]:
-    """
-    Full AI pipeline — yields text tokens as they arrive from OpenAI.
-
-    Steps:
-      1. Fetch memories → build system prompt
-      2. Fetch last 10 messages from DB → conversation history
-      3. Call OpenAI with stream=True
-      4. Yield each non-empty token string
-
-    conversation_id is accepted for interface completeness; history is currently
-    fetched by user_id. When per-conversation history is added, pass it through here.
-    """
     system = await build_system_prompt(user_id)
     history = await get_recent_messages(user_id) if user_id else []
 
