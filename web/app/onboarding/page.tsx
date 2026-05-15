@@ -134,6 +134,7 @@ export default function OnboardingPage() {
         tone: selectedTone ?? (toneText.trim() || null),
         expectation: expectation.trim() || null,
         open_field: null,
+        language_pref: lang,
       }),
     );
     localStorage.setItem(LS_DONE, "true");

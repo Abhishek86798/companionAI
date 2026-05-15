@@ -7,6 +7,7 @@ const FALLBACK: PersonaData = {
   tone: null,
   expectation: null,
   open_field: null,
+  language_pref: "hinglish",
 };
 
 export function usePersona(): PersonaData {

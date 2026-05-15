@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends
 
 from app.db import supabase
 from app.dependencies import require_current_user
-from app.models.schemas import PersonaResponse, PersonaUpsert
+from app.models.schemas import PersonaResponse, PersonaUpsert, _VALID_LANGS
 
 router = APIRouter()
 
@@ -11,6 +11,7 @@ _DEFAULTS = PersonaResponse(
     tone=None,
     expectation=None,
     open_field=None,
+    language_pref="hinglish",
 )
 
 
@@ -20,7 +21,7 @@ async def get_persona(
 ) -> PersonaResponse:
     result = (
         supabase.table("persona")
-        .select("companion_name, tone, expectation, open_field")
+        .select("companion_name, tone, expectation, open_field, language_pref")
         .eq("user_id", user_id)
         .maybe_single()
         .execute()
@@ -44,11 +45,13 @@ async def upsert_persona(
         payload["expectation"] = body.expectation
     if body.open_field is not None:
         payload["open_field"] = body.open_field
+    if body.language_pref is not None and body.language_pref in _VALID_LANGS:
+        payload["language_pref"] = body.language_pref
 
     supabase.table("persona").upsert(payload, on_conflict="user_id").execute()
     result = (
         supabase.table("persona")
-        .select("companion_name, tone, expectation, open_field")
+        .select("companion_name, tone, expectation, open_field, language_pref")
         .eq("user_id", user_id)
         .maybe_single()
         .execute()

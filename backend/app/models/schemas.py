@@ -44,11 +44,15 @@ class MemoriesResponse(BaseModel):
     memories: list[MemoryFact]
 
 
+_VALID_LANGS = {"hinglish", "hindi", "english"}
+
+
 class PersonaUpsert(BaseModel):
     companion_name: Optional[str] = None
     tone: Optional[str] = None
     expectation: Optional[str] = None
     open_field: Optional[str] = None
+    language_pref: Optional[str] = None
 
 
 class PersonaResponse(BaseModel):
@@ -56,3 +60,4 @@ class PersonaResponse(BaseModel):
     tone: Optional[str] = None
     expectation: Optional[str] = None
     open_field: Optional[str] = None
+    language_pref: str = "hinglish"

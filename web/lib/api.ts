@@ -5,6 +5,7 @@ export interface PersonaData {
   tone: string | null;
   expectation: string | null;
   open_field: string | null;
+  language_pref: string;
 }
 
 export async function fetchPersona(token: string): Promise<PersonaData> {

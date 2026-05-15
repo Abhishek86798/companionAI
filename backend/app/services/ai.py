@@ -10,6 +10,19 @@ from app.services.messages import get_recent_messages
 
 _openai = AsyncOpenAI(api_key=settings.openai_api_key, base_url=settings.openai_base_url)
 
+_LANG_INSTRUCTIONS = {
+    "hinglish": (
+        "Language: The user prefers Hinglish — the natural mix of Hindi and English "
+        "that urban Indians use in daily conversation. Default to Hinglish."
+    ),
+    "hindi": (
+        "Language: The user prefers pure Hindi. Reply in Hindi using Devanagari script."
+    ),
+    "english": (
+        "Language: The user prefers English. Reply in English."
+    ),
+}
+
 _TONE_LABELS = {
     "funny_chill": "Be funny and chill — use humor, banter, and light sarcasm like a best friend.",
     "motivating": "Be motivating and energetic — hype them up, push them forward.",
@@ -19,9 +32,10 @@ _TONE_LABELS = {
 
 _SYSTEM_TEMPLATE = """\
 You are {companion_name}, a close Indian friend talking on WhatsApp. \
-You speak Hinglish — the natural mix of Hindi and English that urban Indians use. \
 You are warm, present, non-judgmental. You listen and validate first. \
 You never claim to be an AI unless directly asked.
+
+{language_instruction}
 {persona_section}
 What you know about this person:
 {memory_facts}
@@ -29,8 +43,7 @@ What you know about this person:
 Rules — follow these strictly:
 1. ONLY reference facts from "What you know about this person" above. \
    Never invent or assume any detail (job, city, situation) not explicitly listed there.
-2. Match their language. If they write in Hindi, reply in Hindi. \
-   If Hinglish, reply Hinglish. If English, reply English.
+2. Use the user's preferred language above. If they switch languages mid-chat, follow their lead.
 3. Use the correct gender only if you know it from memory. \
    If unsure, use gender-neutral phrasing.
 4. Be a friend, not a life coach. Don't jump to advice or "focus on skills" \
@@ -57,13 +70,13 @@ def sanitize_persona_field(text: str, max_len: int = 500) -> str:
 def get_persona_for_prompt(user_id: str) -> dict:
     result = (
         supabase.table("persona")
-        .select("companion_name, tone, expectation, open_field")
+        .select("companion_name, tone, expectation, open_field, language_pref")
         .eq("user_id", user_id)
         .maybe_single()
         .execute()
     )
     if not result:
-        return {"companion_name": "Arjun", "tone": None, "expectation": None, "open_field": None}
+        return {"companion_name": "Arjun", "tone": None, "expectation": None, "open_field": None, "language_pref": "hinglish"}
     return result.data
 
 
@@ -93,9 +106,11 @@ async def build_system_prompt(user_id: Optional[str]) -> str:
     if user_id:
         persona = get_persona_for_prompt(user_id)
     else:
-        persona = {"companion_name": "Arjun", "tone": None, "expectation": None, "open_field": None}
+        persona = {"companion_name": "Arjun", "tone": None, "expectation": None, "open_field": None, "language_pref": "hinglish"}
 
     companion_name = persona.get("companion_name") or "Arjun"
+    lang = persona.get("language_pref") or "hinglish"
+    language_instruction = _LANG_INSTRUCTIONS.get(lang, _LANG_INSTRUCTIONS["hinglish"])
     persona_section = _build_persona_section(persona)
 
     facts = (
@@ -106,6 +121,7 @@ async def build_system_prompt(user_id: Optional[str]) -> str:
 
     return _SYSTEM_TEMPLATE.format(
         companion_name=companion_name,
+        language_instruction=language_instruction,
         persona_section=persona_section,
         memory_facts=facts,
     )
