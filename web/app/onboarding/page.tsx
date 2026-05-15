@@ -1,8 +1,8 @@
 "use client";
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
+import { COPY, type Lang } from "@/lib/copy";
 
-type Language = "hinglish" | "hindi" | "english";
 type Step = 0 | 1 | 2 | 3 | 4 | 5;
 type Direction = "forward" | "back";
 
@@ -12,75 +12,23 @@ const LS_INTAKE = "arjun_intake";
 const LS_DONE = "arjun_onboarding_done";
 const LS_PERSONA = "arjun_persona";
 
-const LANGUAGES: { value: Language; label: string; sub: string }[] = [
+const LANGUAGES: { value: Lang; label: string; sub: string }[] = [
   { value: "hinglish", label: "Hinglish", sub: "Mix of Hindi + English" },
   { value: "hindi", label: "हिंदी", sub: "Sirf Hindi mein" },
   { value: "english", label: "English", sub: "Only English" },
 ];
 
 const TONE_OPTIONS = [
-  { value: "funny_chill", emoji: "😄", label: "Funny & chill", sub: "Halka phulka" },
-  { value: "motivating", emoji: "💪", label: "Motivating", sub: "Push karta rahe" },
-  { value: "logical", emoji: "🧠", label: "Logical", sub: "Practical advice" },
-  { value: "just_listen", emoji: "🤗", label: "Just listen", sub: "Bina advice ke" },
+  { value: "funny_chill", emoji: "😄", label: "Funny & chill", subKey: "toneHalkaPhulka" },
+  { value: "motivating", emoji: "💪", label: "Motivating", subKey: "tonePushKartaRahe" },
+  { value: "logical", emoji: "🧠", label: "Logical", subKey: "tonePractical" },
+  { value: "just_listen", emoji: "🤗", label: "Just listen", subKey: "toneBinaAdvice" },
 ] as const;
-
-const COPY: Record<
-  Language,
-  {
-    intro: string;
-    nameQ: string; nameP: string;
-    cityQ: string; cityP: string;
-    sitQ: string; sitP: string;
-    next: string;
-    heading: string; subheading: string;
-  }
-> = {
-  hinglish: {
-    intro:
-      "Main Arjun hoon — tera apna dost. Job stress ho, relationships mein confusion ho, ya bas vent karna ho — yahan bata. Koi judgment nahi, sab confidential.",
-    nameQ: "Tera naam kya hai?",
-    nameP: "Apna naam batao...",
-    cityQ: "Kahan se ho?",
-    cityP: "Apna city batao...",
-    sitQ: "Aaj kya chal raha hai life mein?",
-    sitP: "Kuch bhi share karo, koi judgment nahi...",
-    next: "Haan, let's go!",
-    heading: "Thoda aur bata apne baare mein",
-    subheading: "Taaki woh tujhe better samajh sake",
-  },
-  hindi: {
-    intro:
-      "मैं अर्जुन हूँ — आपका अपना दोस्त। जॉब स्ट्रेस हो, रिश्तों में उलझन हो, या बस कुछ कहना हो — यहाँ बताएं। कोई judgment नहीं, सब confidential।",
-    nameQ: "आपका नाम क्या है?",
-    nameP: "अपना नाम बताएं...",
-    cityQ: "आप कहाँ से हैं?",
-    cityP: "अपना शहर बताएं...",
-    sitQ: "आज जीवन में क्या चल रहा है?",
-    sitP: "कुछ भी साझा करें, कोई judgment नहीं...",
-    next: "हाँ, चलते हैं!",
-    heading: "थोड़ा और बताएं अपने बारे में",
-    subheading: "ताकि वो आपको बेहतर समझ सके",
-  },
-  english: {
-    intro:
-      "I'm Arjun — your personal friend. Job stress, relationship confusion, or just need to vent — tell me here. Zero judgment, completely confidential.",
-    nameQ: "What's your name?",
-    nameP: "Tell me your name...",
-    cityQ: "Where are you from?",
-    cityP: "Your city...",
-    sitQ: "What's going on in your life today?",
-    sitP: "Share anything, zero judgment...",
-    next: "Yeah, let's go!",
-    heading: "Tell me a bit about yourself",
-    subheading: "So they can understand you better",
-  },
-};
 
 export default function OnboardingPage() {
   const router = useRouter();
   const [step, setStep] = useState<Step>(0);
-  const [lang, setLang] = useState<Language>("hinglish");
+  const [lang, setLang] = useState<Lang>("hinglish");
   const [name, setName] = useState("");
   const [city, setCity] = useState("");
   const [situation, setSituation] = useState("");
@@ -97,7 +45,7 @@ export default function OnboardingPage() {
       router.replace("/chat");
       return;
     }
-    const savedLang = localStorage.getItem(LS_LANG) as Language | null;
+    const savedLang = localStorage.getItem(LS_LANG) as Lang | null;
     const savedStep = localStorage.getItem(LS_STEP);
     if (savedLang && ["hinglish", "hindi", "english"].includes(savedLang)) {
       setLang(savedLang);
@@ -117,7 +65,7 @@ export default function OnboardingPage() {
     }, 200);
   };
 
-  const handleLangSelect = (l: Language) => {
+  const handleLangSelect = (l: Lang) => {
     setLang(l);
     localStorage.setItem(LS_LANG, l);
   };
@@ -144,7 +92,7 @@ export default function OnboardingPage() {
 
   if (!mounted) return null;
 
-  const c = COPY[lang];
+  const c = COPY[lang].onboarding;
   const exitTranslate = direction === "forward" ? "-translate-x-5" : "translate-x-5";
   const slideClass = exiting ? `opacity-0 ${exitTranslate}` : "opacity-100 translate-x-0";
 
@@ -178,7 +126,7 @@ export default function OnboardingPage() {
             <LanguageStep lang={lang} onSelect={handleLangSelect} onNext={() => goTo(1)} />
           )}
           {step === 1 && (
-            <MeetStep lang={lang} intro={c.intro} ctaLabel={c.next} onNext={() => goTo(2)} onBack={() => goTo(0, "back")} />
+            <MeetStep c={c} onNext={() => goTo(2)} onBack={() => goTo(0, "back")} />
           )}
           {step === 2 && (
             <IntakeStep
@@ -189,20 +137,20 @@ export default function OnboardingPage() {
           )}
           {step === 3 && (
             <CompanionNameStep
-              value={companionName} onChange={setCompanionName}
+              c={c} value={companionName} onChange={setCompanionName}
               onBack={() => goTo(2, "back")} onNext={() => goTo(4)}
             />
           )}
           {step === 4 && (
             <ToneStep
-              selected={selectedTone} onSelect={setSelectedTone}
+              c={c} selected={selectedTone} onSelect={setSelectedTone}
               freeText={toneText} onFreeText={setToneText}
               onBack={() => goTo(3, "back")} onNext={() => goTo(5)}
             />
           )}
           {step === 5 && (
             <ExpectationStep
-              value={expectation} onChange={setExpectation}
+              c={c} value={expectation} onChange={setExpectation}
               onBack={() => goTo(4, "back")} onFinish={finish}
             />
           )}
@@ -213,6 +161,8 @@ export default function OnboardingPage() {
 }
 
 /* ─── Shared styles ──────────────────────────────────────────────────────── */
+
+type OC = typeof COPY["hinglish"]["onboarding"];
 
 const inputCls =
   "w-full px-4 py-3 text-sm rounded-xl text-[var(--color-text)] placeholder:text-[var(--color-text-dim)] caret-[var(--color-primary)]";
@@ -230,7 +180,7 @@ const primaryBtn = {
 
 /* ─── Back button ────────────────────────────────────────────────────────── */
 
-function BackButton({ onClick }: { onClick: () => void }) {
+function BackButton({ label, onClick }: { label: string; onClick: () => void }) {
   return (
     <button
       onClick={onClick}
@@ -240,14 +190,14 @@ function BackButton({ onClick }: { onClick: () => void }) {
       <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
         <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
       </svg>
-      Back
+      {label}
     </button>
   );
 }
 
 /* ─── Step 0: Language Select ─────────────────────────────────────────────── */
 
-function LanguageStep({ lang, onSelect, onNext }: { lang: Language; onSelect: (l: Language) => void; onNext: () => void }) {
+function LanguageStep({ lang, onSelect, onNext }: { lang: Lang; onSelect: (l: Lang) => void; onNext: () => void }) {
   return (
     <div>
       <div className="text-center mb-8">
@@ -296,26 +246,24 @@ function LanguageStep({ lang, onSelect, onNext }: { lang: Language; onSelect: (l
 
 /* ─── Step 1: Meet the companion ─────────────────────────────────────────── */
 
-function MeetStep({ lang, intro, ctaLabel, onNext, onBack }: { lang: Language; intro: string; ctaLabel: string; onNext: () => void; onBack: () => void }) {
+function MeetStep({ c, onNext, onBack }: { c: OC; onNext: () => void; onBack: () => void }) {
   return (
     <div className="text-center">
       <div className="flex mb-6">
-        <BackButton onClick={onBack} />
+        <BackButton label={c.back} onClick={onBack} />
       </div>
       <div className="w-20 h-20 rounded-full mx-auto mb-6 flex items-center justify-center text-white text-4xl font-bold avatar-pulse" style={{ backgroundColor: "var(--color-primary)" }}>
         A
       </div>
-      <h2 className="text-2xl font-semibold mb-1 text-[var(--color-text)]">
-        {lang === "hindi" ? "मैं अर्जुन हूँ" : "Main Arjun hoon"}
-      </h2>
+      <h2 className="text-2xl font-semibold mb-1 text-[var(--color-text)]">{c.meetHeading}</h2>
       <p className="text-sm font-medium mb-6" style={{ color: "var(--color-primary)" }}>
-        {lang === "hindi" ? "आपका अपना दोस्त" : "Tera apna dost"} 🤝
+        {c.meetSub} 🤝
       </p>
       <div className="rounded-xl px-5 py-4 text-left mb-8" style={{ backgroundColor: "var(--color-surface)", border: "1px solid var(--color-border)" }}>
-        <p className="text-sm leading-relaxed text-[var(--color-text-muted)]">{intro}</p>
+        <p className="text-sm leading-relaxed text-[var(--color-text-muted)]">{c.intro}</p>
       </div>
       <button onClick={onNext} className="w-full font-semibold text-white transition-all active:scale-[0.97]" style={primaryBtn}>
-        {ctaLabel}
+        {c.ctaNext}
       </button>
     </div>
   );
@@ -326,7 +274,7 @@ function MeetStep({ lang, intro, ctaLabel, onNext, onBack }: { lang: Language; i
 function IntakeStep({
   c, name, setName, city, setCity, situation, setSituation, onBack, onNext,
 }: {
-  c: (typeof COPY)[Language]; name: string; setName: (v: string) => void;
+  c: OC; name: string; setName: (v: string) => void;
   city: string; setCity: (v: string) => void; situation: string; setSituation: (v: string) => void;
   onBack: () => void; onNext: () => void;
 }) {
@@ -334,10 +282,10 @@ function IntakeStep({
 
   return (
     <div>
-      <div className="flex mb-6"><BackButton onClick={onBack} /></div>
+      <div className="flex mb-6"><BackButton label={c.back} onClick={onBack} /></div>
       <div className="mb-6">
-        <h2 className="text-xl font-semibold mb-1 text-[var(--color-text)]">{c.heading}</h2>
-        <p className="text-xs text-[var(--color-text-muted)]">{c.subheading}</p>
+        <h2 className="text-xl font-semibold mb-1 text-[var(--color-text)]">{c.intakeHeading}</h2>
+        <p className="text-xs text-[var(--color-text-muted)]">{c.intakeSub}</p>
       </div>
       <div className="space-y-4 mb-6">
         <div>
@@ -354,7 +302,7 @@ function IntakeStep({
         </div>
       </div>
       <button onClick={onNext} disabled={!canSubmit} className="w-full font-semibold text-white transition-all active:scale-[0.97]" style={{ ...primaryBtn, opacity: canSubmit ? 1 : 0.35, cursor: canSubmit ? "pointer" : "not-allowed" }}>
-        Next →
+        {c.next}
       </button>
     </div>
   );
@@ -362,25 +310,25 @@ function IntakeStep({
 
 /* ─── Step 3: Companion Name ─────────────────────────────────────────────── */
 
-function CompanionNameStep({ value, onChange, onBack, onNext }: { value: string; onChange: (v: string) => void; onBack: () => void; onNext: () => void }) {
+function CompanionNameStep({ c, value, onChange, onBack, onNext }: { c: OC; value: string; onChange: (v: string) => void; onBack: () => void; onNext: () => void }) {
   return (
     <div>
-      <div className="flex mb-6"><BackButton onClick={onBack} /></div>
+      <div className="flex mb-6"><BackButton label={c.back} onClick={onBack} /></div>
       <div className="mb-8">
-        <h2 className="text-xl font-semibold mb-1 text-[var(--color-text)]">Usse kya bulaaun?</h2>
-        <p className="text-xs text-[var(--color-text-muted)]">Iska naam rakh — jo chahe. Default hai &lsquo;Arjun&rsquo;.</p>
+        <h2 className="text-xl font-semibold mb-1 text-[var(--color-text)]">{c.companionNameHeading}</h2>
+        <p className="text-xs text-[var(--color-text-muted)]">{c.companionNameSub}</p>
       </div>
       <input
         type="text"
         value={value}
         onChange={(e) => onChange(e.target.value.slice(0, 30))}
-        placeholder="Arjun"
+        placeholder={c.companionNamePlaceholder}
         className={`${inputCls} mb-2`}
         style={inputInline}
       />
       <p className="text-xs text-[var(--color-text-muted)] mb-8 px-1">{value.length}/30</p>
       <button onClick={onNext} className="w-full font-semibold text-white transition-all active:scale-[0.97]" style={primaryBtn}>
-        Next →
+        {c.next}
       </button>
     </div>
   );
@@ -389,20 +337,26 @@ function CompanionNameStep({ value, onChange, onBack, onNext }: { value: string;
 /* ─── Step 4: Tone ───────────────────────────────────────────────────────── */
 
 function ToneStep({
-  selected, onSelect, freeText, onFreeText, onBack, onNext,
+  c, selected, onSelect, freeText, onFreeText, onBack, onNext,
 }: {
-  selected: string | null; onSelect: (v: string | null) => void;
+  c: OC; selected: string | null; onSelect: (v: string | null) => void;
   freeText: string; onFreeText: (v: string) => void;
   onBack: () => void; onNext: () => void;
 }) {
   const canSubmit = selected !== null || freeText.trim().length > 0;
+  const subMap: Record<string, string> = {
+    toneHalkaPhulka: c.toneHalkaPhulka,
+    tonePushKartaRahe: c.tonePushKartaRahe,
+    tonePractical: c.tonePractical,
+    toneBinaAdvice: c.toneBinaAdvice,
+  };
 
   return (
     <div>
-      <div className="flex mb-6"><BackButton onClick={onBack} /></div>
+      <div className="flex mb-6"><BackButton label={c.back} onClick={onBack} /></div>
       <div className="mb-6">
-        <h2 className="text-xl font-semibold mb-1 text-[var(--color-text)]">Main kaisa behave karun?</h2>
-        <p className="text-xs text-[var(--color-text-muted)]">Apne hisaab se choose kar.</p>
+        <h2 className="text-xl font-semibold mb-1 text-[var(--color-text)]">{c.toneHeading}</h2>
+        <p className="text-xs text-[var(--color-text-muted)]">{c.toneSub}</p>
       </div>
 
       <div className="grid grid-cols-2 gap-3 mb-4">
@@ -423,7 +377,7 @@ function ToneStep({
               <p className="text-sm font-medium" style={{ color: active ? "var(--color-primary)" : "var(--color-text)" }}>
                 {opt.label}
               </p>
-              <p className="text-xs text-[var(--color-text-muted)]">{opt.sub}</p>
+              <p className="text-xs text-[var(--color-text-muted)]">{subMap[opt.subKey]}</p>
             </button>
           );
         })}
@@ -432,14 +386,14 @@ function ToneStep({
       <textarea
         value={freeText}
         onChange={(e) => onFreeText(e.target.value.slice(0, 200))}
-        placeholder="Ya apne words mein batao... (optional)"
+        placeholder={c.toneFreeTextPlaceholder}
         rows={2}
         className={`${inputCls} resize-none mb-6`}
         style={inputInline}
       />
 
       <button onClick={onNext} disabled={!canSubmit} className="w-full font-semibold text-white transition-all active:scale-[0.97]" style={{ ...primaryBtn, opacity: canSubmit ? 1 : 0.35, cursor: canSubmit ? "pointer" : "not-allowed" }}>
-        Next →
+        {c.next}
       </button>
     </div>
   );
@@ -447,29 +401,29 @@ function ToneStep({
 
 /* ─── Step 5: Expectation ────────────────────────────────────────────────── */
 
-function ExpectationStep({ value, onChange, onBack, onFinish }: { value: string; onChange: (v: string) => void; onBack: () => void; onFinish: () => void }) {
+function ExpectationStep({ c, value, onChange, onBack, onFinish }: { c: OC; value: string; onChange: (v: string) => void; onBack: () => void; onFinish: () => void }) {
   const trimmed = value.trim();
   const showHint = trimmed.length > 0 && trimmed.length < 10;
 
   return (
     <div>
-      <div className="flex mb-6"><BackButton onClick={onBack} /></div>
+      <div className="flex mb-6"><BackButton label={c.back} onClick={onBack} /></div>
       <div className="mb-6">
-        <h2 className="text-xl font-semibold mb-1 text-[var(--color-text)]">Tujhse kya chahiye mujhe?</h2>
-        <p className="text-xs text-[var(--color-text-muted)]">Honest reh — yahi kaam aayega.</p>
+        <h2 className="text-xl font-semibold mb-1 text-[var(--color-text)]">{c.expectationHeading}</h2>
+        <p className="text-xs text-[var(--color-text-muted)]">{c.expectationSub}</p>
       </div>
 
       <textarea
         value={value}
         onChange={(e) => onChange(e.target.value.slice(0, 500))}
-        placeholder={"Jaise — vent karna hai, ya solution chahiye,\nya bas koi sun le..."}
+        placeholder={c.expectationPlaceholder}
         rows={4}
         className={`${inputCls} resize-none mb-1`}
         style={inputInline}
       />
       {showHint && (
         <p className="text-xs mb-1 px-1" style={{ color: "var(--color-primary)" }}>
-          Thoda aur batao...
+          {c.expectationHint}
         </p>
       )}
       <p className="text-xs text-[var(--color-text-muted)] mb-8 px-1">{value.length}/500</p>
@@ -480,7 +434,7 @@ function ExpectationStep({ value, onChange, onBack, onFinish }: { value: string;
         className="w-full font-semibold text-white transition-all active:scale-[0.97]"
         style={{ ...primaryBtn, opacity: trimmed.length >= 10 ? 1 : 0.35, cursor: trimmed.length >= 10 ? "pointer" : "not-allowed" }}
       >
-        Start chatting →
+        {c.startChatting}
       </button>
     </div>
   );

@@ -2,11 +2,13 @@
 import { useState, useEffect, type KeyboardEvent } from "react";
 import { useVoiceInput } from "@/hooks/useVoiceInput";
 import VoiceButton from "./VoiceButton";
+import { COPY, type Lang } from "@/lib/copy";
 
 interface Props {
   onSend: (text: string) => void;
   disabled?: boolean;
   isLimited?: boolean;
+  lang?: Lang;
   /** Set to restore a failed message back into the input box */
   restoreText?: string;
   onRestoreConsumed?: () => void;
@@ -16,6 +18,7 @@ export default function ChatInput({
   onSend,
   disabled,
   isLimited,
+  lang,
   restoreText,
   onRestoreConsumed,
 }: Props) {
@@ -70,8 +73,8 @@ export default function ChatInput({
         disabled={disabled || isLimited}
         placeholder={
           isLimited
-            ? "Daily limit reached. Kal phir aana! 🙏"
-            : "Kuch bhi bolo yaar..."
+            ? COPY[lang ?? "hinglish"].chat.limitPlaceholder
+            : COPY[lang ?? "hinglish"].chat.inputPlaceholder
         }
         className="flex-1 resize-none rounded-2xl px-4 py-2.5 text-sm text-[var(--color-text)] placeholder:text-[var(--color-text-dim)] focus:outline-none max-h-32 transition-all disabled:opacity-50"
         style={{

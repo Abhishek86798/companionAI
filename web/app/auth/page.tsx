@@ -3,6 +3,7 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/context/AuthContext";
+import { COPY, type Lang } from "@/lib/copy";
 
 type Tab = "phone" | "email";
 type Step = "input" | "otp";
@@ -12,6 +13,7 @@ const MAX_OTP_ATTEMPTS = 3;
 export default function AuthPage() {
   const router = useRouter();
   const { session } = useAuth();
+  const [lang, setLang] = useState<Lang>("hinglish");
   const [tab, setTab] = useState<Tab>("phone");
   const [step, setStep] = useState<Step>("input");
   const [phone, setPhone] = useState("");
@@ -22,6 +24,15 @@ export default function AuthPage() {
   const [otpAttempts, setOtpAttempts] = useState(0);
   const [isShaking, setIsShaking] = useState(false);
   const [showResend, setShowResend] = useState(false);
+
+  const t = COPY[lang].auth;
+
+  useEffect(() => {
+    const saved = localStorage.getItem("arjun_lang_pref") as Lang | null;
+    if (saved && (saved === "hinglish" || saved === "hindi" || saved === "english")) {
+      setLang(saved);
+    }
+  }, []);
 
   // Redirect when session arrives (e.g. after magic link click)
   useEffect(() => {
@@ -59,8 +70,8 @@ export default function AuthPage() {
 
   const validatePhone = (raw: string): string | null => {
     const normalised = normalisePhone(raw);
-    if (!normalised.startsWith("+")) return "Country code zaruri hai (e.g. +91 98765 43210)";
-    if (!/^\+\d{7,15}$/.test(normalised)) return "Valid phone number daalo";
+    if (!normalised.startsWith("+")) return t.phoneInvalidCountry;
+    if (!/^\+\d{7,15}$/.test(normalised)) return t.phoneInvalidFormat;
     return null;
   };
 
@@ -84,10 +95,10 @@ export default function AuthPage() {
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : "";
       if (msg.toLowerCase().includes("unsupported phone provider") || msg.toLowerCase().includes("phone provider")) {
-        setError("Phone OTP abhi available nahi. Email se try karo.");
+        setError(t.phoneProviderError);
         setTimeout(() => switchTab("email"), 1800);
       } else {
-        setError(msg || "Kuch gadbad ho gayi, dobara try karo.");
+        setError(msg || t.genericError);
       }
     } finally {
       setLoading(false);
@@ -115,9 +126,9 @@ export default function AuthPage() {
         setIsShaking(true);
         setTimeout(() => setIsShaking(false), 350);
         setShowResend(true);
-        setError("Galat OTP hai. Dobara bhejo?");
+        setError(t.otpMaxAttempts);
       } else {
-        setError(e instanceof Error ? e.message : "OTP galat hai, dobara try karo.");
+        setError(e instanceof Error ? e.message : t.otpInvalid);
       }
     } finally {
       setLoading(false);
@@ -166,7 +177,7 @@ export default function AuthPage() {
             Arjun
           </h1>
           <p className="mt-1 text-sm text-[var(--color-text-muted)]">
-            Tera apna dost
+            {t.tagline}
           </p>
         </div>
 
@@ -232,10 +243,10 @@ export default function AuthPage() {
                 style={{ backgroundColor: "var(--color-primary)", minHeight: 52 }}
               >
                 {loading
-                  ? "Bhej raha hoon..."
+                  ? t.sending
                   : tab === "phone"
-                  ? "OTP Bhejo"
-                  : "Magic Link Bhejo"}
+                  ? t.sendOtp
+                  : t.sendMagicLink}
               </button>
             </>
           ) : tab === "email" ? (
@@ -244,11 +255,10 @@ export default function AuthPage() {
               <div className="text-center py-6">
                 <div className="text-5xl mb-4">📧</div>
                 <p className="text-sm font-medium text-[var(--color-text)] mb-1">
-                  Link bhej diya!
+                  {t.linkSent}
                 </p>
                 <p className="text-xs text-[var(--color-text-muted)]">
-                  <span className="text-[var(--color-text)]">{email}</span> pe
-                  ek login link hai — email kholo aur click karo.
+                  {t.emailSentDesc(email)}
                 </p>
               </div>
 
@@ -266,7 +276,7 @@ export default function AuthPage() {
                     className="text-xs transition-colors disabled:opacity-50"
                     style={{ color: "var(--color-primary)", minHeight: 44 }}
                   >
-                    {loading ? "Bhej raha hoon..." : "Link dobara bhejo"}
+                    {loading ? t.sending : t.resendLink}
                   </button>
                 </div>
               )}
@@ -280,15 +290,14 @@ export default function AuthPage() {
                 className="w-full mt-1 text-xs text-[var(--color-text-muted)] transition-colors hover:text-[var(--color-text)]"
                 style={{ minHeight: 44 }}
               >
-                Wapas jao
+                {t.back}
               </button>
             </>
           ) : (
             /* ── Phone: enter OTP code ── */
             <>
               <p className="text-xs mb-4 text-center text-[var(--color-text-muted)]">
-                OTP bheja{" "}
-                <span className="text-[var(--color-text)]">{phone}</span> pe
+                {t.otpSentTo(phone)}
               </p>
 
               {/* OTP boxes — 48×52px, 8px gap */}
@@ -330,7 +339,7 @@ export default function AuthPage() {
                 className="w-full py-3 rounded-xl text-white font-semibold text-sm transition-all active:scale-[0.97] disabled:opacity-50"
                 style={{ backgroundColor: "var(--color-primary)", minHeight: 52 }}
               >
-                {loading ? "Verify ho raha hai..." : "Verify Karo"}
+                {loading ? t.verifying : t.verify}
               </button>
 
               {showResend && (
@@ -341,16 +350,16 @@ export default function AuthPage() {
                     className="text-xs transition-colors disabled:opacity-50"
                     style={{ color: "var(--color-primary)", minHeight: 44 }}
                   >
-                    OTP dobara bhejo
+                    {loading ? t.sending : t.resendOtp}
                   </button>
                   <p className="text-xs text-center" style={{ color: "var(--color-text-muted)" }}>
-                    OTP nahi aaya?{" "}
+                    {t.otpNotReceived}{" "}
                     <button
                       onClick={() => switchTab("email")}
                       className="underline"
                       style={{ color: "var(--color-primary)" }}
                     >
-                      Email se try karo
+                      {t.tryEmail}
                     </button>
                   </p>
                 </div>
@@ -366,7 +375,7 @@ export default function AuthPage() {
                 className="w-full mt-3 text-xs text-[var(--color-text-muted)] transition-colors hover:text-[var(--color-text)]"
                 style={{ minHeight: 44 }}
               >
-                Wapas jao
+                {t.back}
               </button>
             </>
           )}

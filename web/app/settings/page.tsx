@@ -5,6 +5,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/context/AuthContext";
 import { useToast } from "@/context/ToastContext";
 import { fetchMemories, deleteMemory, fetchPersona, upsertPersona, type MemoryFact, type PersonaData } from "@/lib/api";
+import { COPY, type Lang } from "@/lib/copy";
 
 const TONE_DISPLAY: Record<string, string> = {
   funny_chill: "Funny & chill",
@@ -51,14 +52,17 @@ export default function SettingsPage() {
     enabled: !!session,
   });
 
+  const lang = (persona?.language_pref ?? "hinglish") as Lang;
+  const t = COPY[lang].settings;
+
   const { mutate: savePersona, isPending: savingPersona } = useMutation({
     mutationFn: (data: Partial<PersonaData>) => upsertPersona(data, session!.access_token),
     onSuccess: (updated) => {
       queryClient.setQueryData<PersonaData>(["persona"], updated);
       setEditingPersona(false);
-      showToast(`Done! ${updated.companion_name} ab waise hi behave karega.`, "success");
+      showToast(t.personaSaved(updated.companion_name), "success");
     },
-    onError: () => showToast("Save nahi hua. Dobara try karo.", "error"),
+    onError: () => showToast(t.personaSaveError, "error"),
   });
 
   const openPersonaEdit = () => {
@@ -92,7 +96,7 @@ export default function SettingsPage() {
     },
     onError: () => {
       void queryClient.invalidateQueries({ queryKey: ["memories"] });
-      showToast("Memory nahi hata. Dobara try karo.", "error");
+      showToast(t.memoryDeleteError, "error");
     },
     onSettled: (_, __, { id }) => {
       setDeletingIds((prev) => {
@@ -150,7 +154,7 @@ export default function SettingsPage() {
           </svg>
         </button>
         <h1 className="text-base font-semibold text-[var(--color-text)]">
-          Settings
+          {t.title}
         </h1>
       </div>
 
@@ -159,7 +163,7 @@ export default function SettingsPage() {
         {/* ── Companion ────────────────────────────────────────────────────── */}
         <section>
           <p className="text-xs uppercase text-[var(--color-text-muted)] mb-2 px-1" style={{ letterSpacing: "0.08em" }}>
-            Companion
+            {t.sectionCompanion}
           </p>
           <div className="rounded-xl overflow-hidden" style={{ background: "var(--color-surface)" }}>
             {!editingPersona ? (
@@ -185,14 +189,14 @@ export default function SettingsPage() {
                     className="text-sm flex-shrink-0 transition-colors"
                     style={{ color: "var(--color-primary)", minHeight: 44 }}
                   >
-                    Edit →
+                    {t.editBtn}
                   </button>
                 </div>
               </div>
             ) : (
               <div className="px-4 py-4 space-y-4">
                 <div>
-                  <label className="block text-xs font-medium mb-1.5 text-[var(--color-text-muted)]">Name</label>
+                  <label className="block text-xs font-medium mb-1.5 text-[var(--color-text-muted)]">{t.nameLabel}</label>
                   <input
                     type="text"
                     value={editName}
@@ -203,7 +207,7 @@ export default function SettingsPage() {
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-medium mb-2 text-[var(--color-text-muted)]">Tone</label>
+                  <label className="block text-xs font-medium mb-2 text-[var(--color-text-muted)]">{t.toneLabel}</label>
                   <div className="grid grid-cols-2 gap-2">
                     {TONE_OPTIONS.map((opt) => {
                       const active = editTone === opt.value;
@@ -227,11 +231,11 @@ export default function SettingsPage() {
                   </div>
                 </div>
                 <div>
-                  <label className="block text-xs font-medium mb-1.5 text-[var(--color-text-muted)]">Expectation</label>
+                  <label className="block text-xs font-medium mb-1.5 text-[var(--color-text-muted)]">{t.expectationLabel}</label>
                   <textarea
                     value={editExpectation}
                     onChange={(e) => setEditExpectation(e.target.value.slice(0, 500))}
-                    placeholder="Tujhse kya chahiye..."
+                    placeholder={t.expectationPlaceholder}
                     rows={3}
                     className="w-full px-4 py-3 text-sm rounded-xl text-[var(--color-text)] placeholder:text-[var(--color-text-dim)] caret-[var(--color-primary)] resize-none"
                     style={{ backgroundColor: "var(--color-elevated)", border: "1px solid var(--color-border)" }}
@@ -243,7 +247,7 @@ export default function SettingsPage() {
                     className="flex-1 text-sm font-medium rounded-xl transition-colors"
                     style={{ height: 44, background: "var(--color-elevated)", color: "var(--color-text-muted)" }}
                   >
-                    Cancel
+                    {t.cancel}
                   </button>
                   <button
                     onClick={() => savePersona({ companion_name: editName.trim() || "Arjun", tone: editTone, expectation: editExpectation.trim() || null })}
@@ -251,7 +255,7 @@ export default function SettingsPage() {
                     className="flex-1 text-sm font-semibold text-white rounded-xl transition-all active:scale-[0.97]"
                     style={{ height: 44, backgroundColor: "var(--color-primary)", opacity: savingPersona ? 0.6 : 1 }}
                   >
-                    {savingPersona ? "Saving..." : "Save"}
+                    {savingPersona ? t.saving : t.save}
                   </button>
                 </div>
               </div>
@@ -265,7 +269,7 @@ export default function SettingsPage() {
             className="text-xs uppercase text-[var(--color-text-muted)] mb-2 px-1"
             style={{ letterSpacing: "0.08em" }}
           >
-            Memories
+            {t.sectionMemories}
           </p>
           <div
             className="rounded-xl overflow-hidden"
@@ -298,14 +302,14 @@ export default function SettingsPage() {
               <div className="flex flex-col items-center py-7 gap-3">
                 <span className="text-2xl" aria-hidden="true">😕</span>
                 <span className="text-xs text-center text-[var(--color-text-muted)] px-4">
-                  Memories load nahi hui. Refresh karo.
+                  {t.memoriesLoadError}
                 </span>
                 <button
                   onClick={() => void refetchMemories()}
                   className="text-xs transition-colors"
                   style={{ color: "var(--color-primary)", minHeight: 44 }}
                 >
-                  Dobara try karo
+                  {t.memoriesRetry}
                 </button>
               </div>
             ) : memories.length === 0 ? (
@@ -313,7 +317,7 @@ export default function SettingsPage() {
               <div className="flex flex-col items-center py-7 gap-2">
                 <span className="text-3xl" aria-hidden="true">🧠</span>
                 <span className="text-xs text-center text-[var(--color-text-muted)] px-4">
-                  Abhi kuch yaad nahi — thoda aur baat karo!
+                  {t.memoriesEmpty}
                 </span>
               </div>
             ) : (
@@ -377,7 +381,7 @@ export default function SettingsPage() {
             className="text-xs uppercase text-[var(--color-text-muted)] mb-2 px-1"
             style={{ letterSpacing: "0.08em" }}
           >
-            Notifications
+            {t.sectionNotifications}
           </p>
           <div
             className="rounded-xl"
@@ -402,7 +406,7 @@ export default function SettingsPage() {
                 <path d="M13.73 21a2 2 0 0 1-3.46 0" />
               </svg>
               <span className="flex-1 text-sm text-[var(--color-text)]">
-                Daily reminder
+                {t.dailyReminder}
               </span>
               <button
                 onClick={() => setNotifEnabled((v) => !v)}
@@ -443,7 +447,7 @@ export default function SettingsPage() {
             className="text-xs uppercase text-[var(--color-text-muted)] mb-2 px-1"
             style={{ letterSpacing: "0.08em" }}
           >
-            Account
+            {t.sectionAccount}
           </p>
           <div
             className="rounded-xl overflow-hidden"
@@ -499,7 +503,7 @@ export default function SettingsPage() {
                 <line x1="21" y1="12" x2="9" y2="12" />
               </svg>
               <span className="text-sm" style={{ color: "var(--color-danger)" }}>
-                Sign out
+                {t.signOut}
               </span>
             </button>
           </div>

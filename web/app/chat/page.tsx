@@ -6,6 +6,7 @@ import { useToast } from "@/context/ToastContext";
 import { sendMessageStream, RateLimitError, type SSEEvent } from "@/lib/chat";
 import { upsertPersona } from "@/lib/api";
 import { usePersona } from "@/hooks/usePersona";
+import { COPY, type Lang } from "@/lib/copy";
 import MessageList from "@/components/chat/MessageList";
 import ChatInput from "@/components/chat/ChatInput";
 import type { ChatMessage } from "@/components/chat/ChatBubble";
@@ -30,22 +31,6 @@ function buildIntroMessage(intake: Record<string, string>): string {
   return parts.join(" ");
 }
 
-function fallbackWelcome(): ChatMessage {
-  return {
-    id: newId(),
-    role: "assistant",
-    content: "Hey yaar! Main Arjun hoon. Bol, kya chal raha hai? 😊",
-    timestamp: new Date(),
-  };
-}
-
-const LIMIT_MESSAGES: Record<string, string> = {
-  anon_limit:
-    "Yaar, free messages khatam! Sign up karo aur baat karte hain. 🙏",
-  default:
-    "Yaar, aaj ke 20 free messages ho gaye. Kal phir baat karte hain! 🌙",
-};
-
 // ── Component ─────────────────────────────────────────────────────────────────
 
 export default function ChatPage() {
@@ -53,6 +38,8 @@ export default function ChatPage() {
   const { showToast } = useToast();
   const router = useRouter();
   const persona = usePersona();
+  const lang = (persona.language_pref ?? "hinglish") as Lang;
+  const t = COPY[lang].chat;
 
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [isStreaming, setIsStreaming] = useState(false);
@@ -60,7 +47,6 @@ export default function ChatPage() {
   const [conversationId, setConversationId] = useState<string>();
   const [restoreText, setRestoreText] = useState("");
 
-  // Track whether we had a session — lets us detect unexpected expiry
   const hadSession = useRef(false);
 
   // ── Auth gate + JWT expiry detection ────────────────────────────────────────
@@ -71,13 +57,12 @@ export default function ChatPage() {
       return;
     }
     if (hadSession.current) {
-      // Session was lost while user was on the page
-      showToast("Session expire ho gaya. Login karo dobara.", "error");
+      showToast(t.sessionExpired, "error");
       setTimeout(() => router.replace("/auth"), 1000);
     } else {
       router.replace("/auth");
     }
-  }, [session, isLoading, router, showToast]);
+  }, [session, isLoading, router, showToast, t.sessionExpired]);
 
   // ── Restore anon conversation_id after auth redirect ────────────────────────
   useEffect(() => {
@@ -114,8 +99,15 @@ export default function ChatPage() {
     if (alreadySent) return;
 
     const raw = localStorage.getItem("arjun_intake");
+    const fallback: ChatMessage = {
+      id: newId(),
+      role: "assistant",
+      content: t.fallbackWelcome(persona.companion_name),
+      timestamp: new Date(),
+    };
+
     if (!raw) {
-      setMessages([fallbackWelcome()]);
+      setMessages([fallback]);
       return;
     }
 
@@ -123,7 +115,7 @@ export default function ChatPage() {
     try {
       introMsg = buildIntroMessage(JSON.parse(raw) as Record<string, string>);
     } catch {
-      setMessages([fallbackWelcome()]);
+      setMessages([fallback]);
       return;
     }
 
@@ -142,10 +134,10 @@ export default function ChatPage() {
     void (async () => {
       try {
         for await (const event of sendMessageStream(introMsg, session.access_token)) {
-          applyEvent(event, streamId, setMessages, setConversationId, setIsLimited);
+          applyEvent(event, streamId, t.aiError, setMessages, setConversationId, setIsLimited);
         }
       } catch {
-        setMessages([fallbackWelcome()]);
+        setMessages([fallback]);
       } finally {
         setIsStreaming(false);
       }
@@ -177,12 +169,11 @@ export default function ChatPage() {
           if (event.type === "done" && !session) {
             localStorage.setItem("arjun_anon_conv_id", event.conversation_id);
           }
-          applyEvent(event, streamId, setMessages, setConversationId, setIsLimited);
+          applyEvent(event, streamId, t.aiError, setMessages, setConversationId, setIsLimited);
         }
       } catch (err) {
         if (err instanceof RateLimitError) {
-          // Inline limit message — keep user bubble
-          const limitMsg = LIMIT_MESSAGES[err.detail] ?? LIMIT_MESSAGES.default;
+          const limitMsg = err.detail === "anon_limit" ? t.limitAnon : t.limitDaily;
           setMessages((prev) =>
             prev
               .filter((m) => m.id !== streamId)
@@ -190,26 +181,24 @@ export default function ChatPage() {
           );
           setIsLimited(true);
         } else if (!receivedAnyToken) {
-          // Connection failure before any data — restore message to input
           setMessages((prev) =>
             prev.filter((m) => m.id !== streamId && m.id !== userMsgId),
           );
           setRestoreText(text);
-          showToast("Message nahi gaya. Internet check kar. 📶", "error");
+          showToast(t.messageNotSent, "error");
         } else {
-          // SSE interrupted mid-stream — preserve partial content, mark done
           setMessages((prev) =>
             prev.map((m) =>
               m.id === streamId ? { ...m, isStreaming: false } : m,
             ),
           );
-          showToast("Connection toot gayi. Jo aaya woh dikha diya. 📶", "error");
+          showToast(t.connectionBroken, "error");
         }
       } finally {
         setIsStreaming(false);
       }
     },
-    [conversationId, session, showToast],
+    [conversationId, session, showToast, t],
   );
 
   if (isLoading) return null;
@@ -219,7 +208,7 @@ export default function ChatPage() {
       className="flex flex-col w-full overflow-hidden"
       style={{ height: "100dvh", background: "var(--color-bg)" }}
     >
-      {/* Top bar — full-width, content centered at max-w-5xl */}
+      {/* Top bar */}
       <header
         className="flex-shrink-0 border-b border-[var(--color-border)]"
         style={{ background: "var(--color-surface)" }}
@@ -246,7 +235,7 @@ export default function ChatPage() {
                   }}
                 />
                 <span className="text-[10px] text-[var(--color-text-muted)]">
-                  online
+                  {t.online}
                 </span>
               </div>
             </div>
@@ -285,6 +274,7 @@ export default function ChatPage() {
         onSend={handleSend}
         disabled={isStreaming}
         isLimited={isLimited}
+        lang={lang}
         restoreText={restoreText}
         onRestoreConsumed={() => setRestoreText("")}
       />
@@ -297,6 +287,7 @@ export default function ChatPage() {
 function applyEvent(
   event: SSEEvent,
   streamId: string,
+  aiError: string,
   setMessages: React.Dispatch<React.SetStateAction<ChatMessage[]>>,
   setConversationId: React.Dispatch<React.SetStateAction<string | undefined>>,
   setIsLimited: React.Dispatch<React.SetStateAction<boolean>>,
@@ -311,12 +302,7 @@ function applyEvent(
     setMessages((prev) =>
       prev.map((m) =>
         m.id === streamId
-          ? {
-              ...m,
-              id: event.message_id,
-              isStreaming: false,
-              isCrisis: event.safety_triggered,
-            }
+          ? { ...m, id: event.message_id, isStreaming: false, isCrisis: event.safety_triggered }
           : m,
       ),
     );
@@ -325,13 +311,7 @@ function applyEvent(
   } else if (event.type === "error") {
     setMessages((prev) =>
       prev.map((m) =>
-        m.id === streamId
-          ? {
-              ...m,
-              content: "Yaar, kuch gadbad ho gayi. Thodi der baad try karo.",
-              isStreaming: false,
-            }
-          : m,
+        m.id === streamId ? { ...m, content: aiError, isStreaming: false } : m,
       ),
     );
   }
