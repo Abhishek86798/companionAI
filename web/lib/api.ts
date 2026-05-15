@@ -1,5 +1,38 @@
 const API = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000/api/v1";
 
+export interface PersonaData {
+  companion_name: string;
+  tone: string | null;
+  expectation: string | null;
+  open_field: string | null;
+}
+
+export async function fetchPersona(token: string): Promise<PersonaData> {
+  const res = await fetch(`${API}/persona`, {
+    headers: { Authorization: `Bearer ${token}` },
+    credentials: "include",
+  });
+  if (!res.ok) throw new Error("Failed to fetch persona");
+  return res.json() as Promise<PersonaData>;
+}
+
+export async function upsertPersona(
+  data: Partial<PersonaData>,
+  token: string,
+): Promise<PersonaData> {
+  const res = await fetch(`${API}/persona`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
+    },
+    credentials: "include",
+    body: JSON.stringify(data),
+  });
+  if (!res.ok) throw new Error("Failed to upsert persona");
+  return res.json() as Promise<PersonaData>;
+}
+
 export interface MemoryFact {
   id: string;
   category: string;

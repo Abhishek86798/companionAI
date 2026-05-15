@@ -4,7 +4,21 @@ import { useRouter } from "next/navigation";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/context/AuthContext";
 import { useToast } from "@/context/ToastContext";
-import { fetchMemories, deleteMemory, type MemoryFact } from "@/lib/api";
+import { fetchMemories, deleteMemory, fetchPersona, upsertPersona, type MemoryFact, type PersonaData } from "@/lib/api";
+
+const TONE_DISPLAY: Record<string, string> = {
+  funny_chill: "Funny & chill",
+  motivating: "Motivating",
+  logical: "Logical",
+  just_listen: "Just listen",
+};
+
+const TONE_OPTIONS = [
+  { value: "funny_chill", emoji: "😄", label: "Funny & chill" },
+  { value: "motivating", emoji: "💪", label: "Motivating" },
+  { value: "logical", emoji: "🧠", label: "Logical" },
+  { value: "just_listen", emoji: "🤗", label: "Just listen" },
+] as const;
 
 const CATEGORY_ICONS: Record<string, string> = {
   name: "😊",
@@ -22,10 +36,37 @@ export default function SettingsPage() {
   const queryClient = useQueryClient();
   const [deletingIds, setDeletingIds] = useState<Set<string>>(new Set());
   const [notifEnabled, setNotifEnabled] = useState(false);
+  const [editingPersona, setEditingPersona] = useState(false);
+  const [editName, setEditName] = useState("");
+  const [editTone, setEditTone] = useState<string | null>(null);
+  const [editExpectation, setEditExpectation] = useState("");
 
   useEffect(() => {
     if (!isLoading && !session) router.replace("/auth");
   }, [session, isLoading, router]);
+
+  const { data: persona } = useQuery({
+    queryKey: ["persona"],
+    queryFn: () => fetchPersona(session!.access_token),
+    enabled: !!session,
+  });
+
+  const { mutate: savePersona, isPending: savingPersona } = useMutation({
+    mutationFn: (data: Partial<PersonaData>) => upsertPersona(data, session!.access_token),
+    onSuccess: (updated) => {
+      queryClient.setQueryData<PersonaData>(["persona"], updated);
+      setEditingPersona(false);
+      showToast(`Done! ${updated.companion_name} ab waise hi behave karega.`, "success");
+    },
+    onError: () => showToast("Save nahi hua. Dobara try karo.", "error"),
+  });
+
+  const openPersonaEdit = () => {
+    setEditName(persona?.companion_name ?? "Arjun");
+    setEditTone(persona?.tone ?? null);
+    setEditExpectation(persona?.expectation ?? "");
+    setEditingPersona(true);
+  };
 
   const {
     data: memories = [],
@@ -115,6 +156,109 @@ export default function SettingsPage() {
 
       {/* Scrollable content */}
       <div className="flex-1 overflow-y-auto px-4 py-5 space-y-6">
+        {/* ── Companion ────────────────────────────────────────────────────── */}
+        <section>
+          <p className="text-xs uppercase text-[var(--color-text-muted)] mb-2 px-1" style={{ letterSpacing: "0.08em" }}>
+            Companion
+          </p>
+          <div className="rounded-xl overflow-hidden" style={{ background: "var(--color-surface)" }}>
+            {!editingPersona ? (
+              <div className="px-4 py-4">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="text-base font-semibold text-[var(--color-text)]">
+                      {persona?.companion_name ?? "Arjun"}
+                    </p>
+                    {persona?.tone && (
+                      <p className="text-xs text-[var(--color-text-muted)] mt-0.5">
+                        {TONE_DISPLAY[persona.tone] ?? persona.tone}
+                      </p>
+                    )}
+                    {persona?.expectation && (
+                      <p className="text-xs text-[var(--color-text-muted)] mt-0.5 line-clamp-1">
+                        {persona.expectation}
+                      </p>
+                    )}
+                  </div>
+                  <button
+                    onClick={openPersonaEdit}
+                    className="text-sm flex-shrink-0 transition-colors"
+                    style={{ color: "var(--color-primary)", minHeight: 44 }}
+                  >
+                    Edit →
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div className="px-4 py-4 space-y-4">
+                <div>
+                  <label className="block text-xs font-medium mb-1.5 text-[var(--color-text-muted)]">Name</label>
+                  <input
+                    type="text"
+                    value={editName}
+                    onChange={(e) => setEditName(e.target.value.slice(0, 30))}
+                    placeholder="Arjun"
+                    className="w-full px-4 py-3 text-sm rounded-xl text-[var(--color-text)] placeholder:text-[var(--color-text-dim)] caret-[var(--color-primary)]"
+                    style={{ backgroundColor: "var(--color-elevated)", border: "1px solid var(--color-border)" }}
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium mb-2 text-[var(--color-text-muted)]">Tone</label>
+                  <div className="grid grid-cols-2 gap-2">
+                    {TONE_OPTIONS.map((opt) => {
+                      const active = editTone === opt.value;
+                      return (
+                        <button
+                          key={opt.value}
+                          onClick={() => setEditTone(active ? null : opt.value)}
+                          className="flex items-center gap-2 px-3 py-2 rounded-xl text-left transition-all"
+                          style={{
+                            backgroundColor: active ? "rgba(255,107,53,0.12)" : "var(--color-elevated)",
+                            border: `1px solid ${active ? "rgba(255,107,53,0.5)" : "var(--color-border)"}`,
+                          }}
+                        >
+                          <span>{opt.emoji}</span>
+                          <span className="text-xs font-medium" style={{ color: active ? "var(--color-primary)" : "var(--color-text)" }}>
+                            {opt.label}
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-xs font-medium mb-1.5 text-[var(--color-text-muted)]">Expectation</label>
+                  <textarea
+                    value={editExpectation}
+                    onChange={(e) => setEditExpectation(e.target.value.slice(0, 500))}
+                    placeholder="Tujhse kya chahiye..."
+                    rows={3}
+                    className="w-full px-4 py-3 text-sm rounded-xl text-[var(--color-text)] placeholder:text-[var(--color-text-dim)] caret-[var(--color-primary)] resize-none"
+                    style={{ backgroundColor: "var(--color-elevated)", border: "1px solid var(--color-border)" }}
+                  />
+                </div>
+                <div className="flex gap-3 pt-1">
+                  <button
+                    onClick={() => setEditingPersona(false)}
+                    className="flex-1 text-sm font-medium rounded-xl transition-colors"
+                    style={{ height: 44, background: "var(--color-elevated)", color: "var(--color-text-muted)" }}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={() => savePersona({ companion_name: editName.trim() || "Arjun", tone: editTone, expectation: editExpectation.trim() || null })}
+                    disabled={savingPersona}
+                    className="flex-1 text-sm font-semibold text-white rounded-xl transition-all active:scale-[0.97]"
+                    style={{ height: 44, backgroundColor: "var(--color-primary)", opacity: savingPersona ? 0.6 : 1 }}
+                  >
+                    {savingPersona ? "Saving..." : "Save"}
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        </section>
+
         {/* ── Memories ─────────────────────────────────────────────────────── */}
         <section>
           <p

@@ -4,6 +4,8 @@ import { useRouter } from "next/navigation";
 import { useAuth } from "@/context/AuthContext";
 import { useToast } from "@/context/ToastContext";
 import { sendMessageStream, RateLimitError, type SSEEvent } from "@/lib/chat";
+import { upsertPersona } from "@/lib/api";
+import { usePersona } from "@/hooks/usePersona";
 import MessageList from "@/components/chat/MessageList";
 import ChatInput from "@/components/chat/ChatInput";
 import type { ChatMessage } from "@/components/chat/ChatBubble";
@@ -50,6 +52,7 @@ export default function ChatPage() {
   const { session, isLoading } = useAuth();
   const { showToast } = useToast();
   const router = useRouter();
+  const persona = usePersona();
 
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [isStreaming, setIsStreaming] = useState(false);
@@ -75,6 +78,34 @@ export default function ChatPage() {
       router.replace("/auth");
     }
   }, [session, isLoading, router, showToast]);
+
+  // ── Restore anon conversation_id after auth redirect ────────────────────────
+  useEffect(() => {
+    if (isLoading || !session) return;
+    if (conversationId) return;
+    const saved = localStorage.getItem("arjun_anon_conv_id");
+    if (saved) {
+      setConversationId(saved);
+      localStorage.removeItem("arjun_anon_conv_id");
+    }
+  }, [isLoading, session, conversationId]);
+
+  // ── Persona sync — POST arjun_persona from localStorage if not yet synced ───
+  useEffect(() => {
+    if (isLoading || !session) return;
+    const raw = localStorage.getItem("arjun_persona");
+    if (!raw) return;
+
+    void (async () => {
+      try {
+        const payload = JSON.parse(raw) as Record<string, string>;
+        await upsertPersona(payload, session.access_token);
+        localStorage.removeItem("arjun_persona");
+      } catch {
+        // silently fail — will retry on next page load
+      }
+    })();
+  }, [isLoading, session]);
 
   // ── First-load intake trigger ────────────────────────────────────────────────
   useEffect(() => {
@@ -143,6 +174,9 @@ export default function ChatPage() {
           conversationId,
         )) {
           if (event.type === "token") receivedAnyToken = true;
+          if (event.type === "done" && !session) {
+            localStorage.setItem("arjun_anon_conv_id", event.conversation_id);
+          }
           applyEvent(event, streamId, setMessages, setConversationId, setIsLimited);
         }
       } catch (err) {
@@ -197,11 +231,11 @@ export default function ChatPage() {
               className="w-9 h-9 rounded-full flex items-center justify-center font-semibold text-white text-base flex-shrink-0"
               style={{ background: "var(--color-primary)" }}
             >
-              A
+              {persona.companion_name[0].toUpperCase()}
             </div>
             <div>
               <p className="text-sm font-semibold text-[var(--color-text)]">
-                Arjun
+                {persona.companion_name}
               </p>
               <div className="flex items-center gap-1.5 mt-0.5">
                 <span

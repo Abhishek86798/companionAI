@@ -2,14 +2,38 @@ from typing import Optional
 from app.db import supabase
 
 
+async def create_anon_conversation() -> str:
+    result = supabase.table("conversations").insert({}).execute()
+    return result.data[0]["id"]
+
+
 async def get_or_create_conversation(
     user_id: str, conversation_id: Optional[str] = None
 ) -> str:
     if conversation_id:
-        return conversation_id
-    result = (
-        supabase.table("conversations").insert({"user_id": user_id}).execute()
-    )
+        # Try to claim an ownerless (anon) conversation
+        claim = (
+            supabase.table("conversations")
+            .update({"user_id": user_id})
+            .eq("id", conversation_id)
+            .is_("user_id", "null")
+            .execute()
+        )
+        if claim.data:
+            return conversation_id
+        # Already owned by this user?
+        existing = (
+            supabase.table("conversations")
+            .select("id")
+            .eq("id", conversation_id)
+            .eq("user_id", user_id)
+            .maybe_single()
+            .execute()
+        )
+        if existing:
+            return conversation_id
+    # No valid conversation found — create a new one
+    result = supabase.table("conversations").insert({"user_id": user_id}).execute()
     return result.data[0]["id"]
 
 

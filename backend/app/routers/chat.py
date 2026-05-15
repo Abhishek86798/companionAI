@@ -10,6 +10,7 @@ from app.models.schemas import ChatMessage, ConversationHistoryResponse, Message
 from app.services.ai import stream_response
 from app.services.memory import extract_and_store_memories, summarize_memories
 from app.services.messages import (
+    create_anon_conversation,
     get_messages_by_conversation,
     get_or_create_conversation,
     get_recent_messages,
@@ -83,7 +84,7 @@ async def send_message(
     # 2. Rate limit check + increment (raises 429 if over limit)
     remaining = await check_and_increment(user_id, anon_session_id)
 
-    # 3. Save user message before streaming (authenticated only; anon = stateless)
+    # 3. Conversation setup + save user message (messages only for authenticated users)
     conv_id_str: Optional[str] = None
     history: list[dict] = []
     if user_id:
@@ -93,8 +94,16 @@ async def send_message(
         )
         history = await get_recent_messages(user_id)
         await save_user_message(user_id, conv_id_str, body.content)
+    else:
+        # Anon: create or reuse an ownerless conversation row so the frontend
+        # can persist conversation_id across the auth redirect and claim it later.
+        conv_id_str = (
+            str(body.conversation_id)
+            if body.conversation_id
+            else await create_anon_conversation()
+        )
 
-    conversation_id = uuid.UUID(conv_id_str) if conv_id_str else (body.conversation_id or uuid.uuid4())
+    conversation_id = uuid.UUID(conv_id_str)
 
     # 4 + 5. Stream AI response; persist assistant message after stream ends
     async def generate():
