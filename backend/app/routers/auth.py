@@ -1,5 +1,4 @@
-import hashlib
-import uuid
+import logging
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
@@ -7,6 +6,7 @@ from pydantic import BaseModel
 from app.config import settings
 from app.db import supabase
 
+logger = logging.getLogger(__name__)
 router = APIRouter(tags=["auth"])
 
 
@@ -26,16 +26,11 @@ def _derive_test_email(identifier: str) -> str:
     return identifier
 
 
-def _derive_user_id(email: str) -> str:
-    # Deterministic UUID so we can always find the user without listing
-    return str(uuid.UUID(hashlib.md5(f"test:{email}".encode()).hexdigest()))
-
-
 @router.post("/auth/test-verify", response_model=TestVerifyResponse)
 async def test_verify(body: TestVerifyRequest) -> TestVerifyResponse:
     """
-    Dev-only: accepts hardcoded TEST_OTP, creates/updates a Supabase test user,
-    returns the derived email so the frontend can call signInWithPassword.
+    Dev-only: accepts hardcoded TEST_OTP, ensures a Supabase test user exists
+    with that password, returns email so frontend can call signInWithPassword.
     Disabled (404) when TEST_OTP env var is not set.
     """
     if not settings.test_otp:
@@ -44,20 +39,35 @@ async def test_verify(body: TestVerifyRequest) -> TestVerifyResponse:
         raise HTTPException(status_code=403, detail="Invalid test OTP")
 
     email = _derive_test_email(body.identifier)
-    uid = _derive_user_id(email)
 
+    # Try creating the user first
     try:
         supabase.auth.admin.create_user({
-            "id": uid,
             "email": email,
             "password": settings.test_otp,
             "email_confirm": True,
         })
-    except Exception:
-        # User already exists — just reset password to current test OTP
-        try:
-            supabase.auth.admin.update_user_by_id(uid, {"password": settings.test_otp})
-        except Exception as e:
-            raise HTTPException(status_code=500, detail=f"Failed to prepare test user: {e}")
+        logger.info("Test user created: %s", email)
+        return TestVerifyResponse(email=email)
+    except Exception as create_err:
+        logger.info("create_user failed (%s), trying to find existing user", create_err)
 
-    return TestVerifyResponse(email=email)
+    # User likely already exists — find them by iterating (small list for test accounts)
+    try:
+        all_users = supabase.auth.admin.list_users()
+        # list_users may return a list or a paginated object
+        users = all_users if isinstance(all_users, list) else getattr(all_users, "users", all_users)
+        user = next((u for u in users if getattr(u, "email", None) == email), None)
+        if not user:
+            raise HTTPException(status_code=500, detail="Test user not found after create failed")
+        supabase.auth.admin.update_user_by_id(str(user.id), {
+                "password": settings.test_otp,
+                "email_confirm": True,
+            })
+        logger.info("Test user password reset: %s", email)
+        return TestVerifyResponse(email=email)
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("test_verify failed for %s: %s", email, e)
+        raise HTTPException(status_code=500, detail=str(e))
