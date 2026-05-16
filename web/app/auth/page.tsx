@@ -83,6 +83,13 @@ export default function AuthPage() {
       if (validationErr) { setError(validationErr); return; }
     }
 
+    // Test mode: skip real OTP send, go straight to OTP input
+    if (process.env.NEXT_PUBLIC_TEST_OTP) {
+      setStep("otp");
+      setOtpAttempts(0);
+      return;
+    }
+
     setLoading(true);
     try {
       const { error } =
