@@ -110,12 +110,26 @@ export default function AuthPage() {
     setLoading(true);
     const token = otp.join("");
     try {
-      const { error } = await supabase.auth.verifyOtp({
-        phone: normalisePhone(phone),
-        token,
-        type: "sms",
-      });
-      if (error) throw error;
+      const testOtp = process.env.NEXT_PUBLIC_TEST_OTP;
+      if (testOtp && token === testOtp) {
+        const API = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000/api/v1";
+        const res = await fetch(`${API}/auth/test-verify`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ identifier: normalisePhone(phone), otp: token }),
+        });
+        if (!res.ok) throw new Error("Test login failed");
+        const { token: magicToken, email } = await res.json() as { token: string; email: string };
+        const { error } = await supabase.auth.verifyOtp({ email, token: magicToken, type: "magiclink" });
+        if (error) throw error;
+      } else {
+        const { error } = await supabase.auth.verifyOtp({
+          phone: normalisePhone(phone),
+          token,
+          type: "sms",
+        });
+        if (error) throw error;
+      }
       const done = localStorage.getItem("arjun_onboarding_done") === "true";
       router.replace(done ? "/chat" : "/onboarding");
     } catch (e: unknown) {
@@ -153,7 +167,9 @@ export default function AuthPage() {
 
   const inputValue = tab === "phone" ? phone : email;
   const canSend = inputValue.trim().length > 0;
-  const canVerify = otp.join("").length === 6;
+  const _enteredOtp = otp.join("");
+  const _testOtp = process.env.NEXT_PUBLIC_TEST_OTP ?? "";
+  const canVerify = _enteredOtp.length === 6 || (_testOtp !== "" && _enteredOtp === _testOtp);
 
   return (
     <div

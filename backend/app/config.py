@@ -13,6 +13,7 @@ class Settings(BaseSettings):
     allowed_origins: str = "http://localhost:3000"
     free_tier_daily_limit: int = 20
     anon_msg_limit: int = 8
+    test_otp: str = ""
 
     model_config = {"env_file": ".env"}
 
