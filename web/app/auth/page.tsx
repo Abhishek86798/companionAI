@@ -83,8 +83,8 @@ export default function AuthPage() {
       if (validationErr) { setError(validationErr); return; }
     }
 
-    // Test mode: skip real OTP send, go straight to OTP input
-    if (process.env.NEXT_PUBLIC_TEST_OTP) {
+    // Test mode (phone only): skip real OTP send, go straight to OTP input
+    if (tab === "phone" && process.env.NEXT_PUBLIC_TEST_OTP) {
       setStep("otp");
       setOtpAttempts(0);
       return;
@@ -126,8 +126,8 @@ export default function AuthPage() {
           body: JSON.stringify({ identifier: normalisePhone(phone), otp: token }),
         });
         if (!res.ok) throw new Error("Test login failed");
-        const { token: magicToken, email } = await res.json() as { token: string; email: string };
-        const { error } = await supabase.auth.verifyOtp({ email, token: magicToken, type: "magiclink" });
+        const { email } = await res.json() as { email: string };
+        const { error } = await supabase.auth.signInWithPassword({ email, password: token });
         if (error) throw error;
       } else {
         const { error } = await supabase.auth.verifyOtp({
@@ -174,9 +174,7 @@ export default function AuthPage() {
 
   const inputValue = tab === "phone" ? phone : email;
   const canSend = inputValue.trim().length > 0;
-  const _enteredOtp = otp.join("");
-  const _testOtp = process.env.NEXT_PUBLIC_TEST_OTP ?? "";
-  const canVerify = _enteredOtp.length === 6 || (_testOtp !== "" && _enteredOtp === _testOtp);
+  const canVerify = otp.join("").length === 6;
 
   return (
     <div

@@ -1,3 +1,6 @@
+import hashlib
+import uuid
+
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
@@ -13,15 +16,26 @@ class TestVerifyRequest(BaseModel):
 
 
 class TestVerifyResponse(BaseModel):
-    token: str
     email: str
+
+
+def _derive_test_email(identifier: str) -> str:
+    identifier = identifier.strip()
+    if identifier.startswith("+") or identifier.replace("+", "").isdigit():
+        return f"{identifier.replace('+', '').replace(' ', '')}@test.arjun.app"
+    return identifier
+
+
+def _derive_user_id(email: str) -> str:
+    # Deterministic UUID so we can always find the user without listing
+    return str(uuid.UUID(hashlib.md5(f"test:{email}".encode()).hexdigest()))
 
 
 @router.post("/auth/test-verify", response_model=TestVerifyResponse)
 async def test_verify(body: TestVerifyRequest) -> TestVerifyResponse:
     """
-    Dev-only endpoint: accepts a hardcoded TEST_OTP and returns a magic-link token
-    so the frontend can establish a real Supabase session for any identifier.
+    Dev-only: accepts hardcoded TEST_OTP, creates/updates a Supabase test user,
+    returns the derived email so the frontend can call signInWithPassword.
     Disabled (404) when TEST_OTP env var is not set.
     """
     if not settings.test_otp:
@@ -29,17 +43,21 @@ async def test_verify(body: TestVerifyRequest) -> TestVerifyResponse:
     if body.otp != settings.test_otp:
         raise HTTPException(status_code=403, detail="Invalid test OTP")
 
-    # Derive an email — phone numbers get a synthetic address
-    identifier = body.identifier.strip()
-    if identifier.startswith("+") or identifier.lstrip("-").isdigit():
-        email = f"{identifier.replace('+', '').replace(' ', '')}@test.arjun.app"
-    else:
-        email = identifier
+    email = _derive_test_email(body.identifier)
+    uid = _derive_user_id(email)
 
     try:
-        res = supabase.auth.admin.generate_link({"type": "magiclink", "email": email})
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to generate session: {e}")
+        supabase.auth.admin.create_user({
+            "id": uid,
+            "email": email,
+            "password": settings.test_otp,
+            "email_confirm": True,
+        })
+    except Exception:
+        # User already exists — just reset password to current test OTP
+        try:
+            supabase.auth.admin.update_user_by_id(uid, {"password": settings.test_otp})
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Failed to prepare test user: {e}")
 
-    hashed_token: str = res.properties.hashed_token  # type: ignore[union-attr]
-    return TestVerifyResponse(token=hashed_token, email=email)
+    return TestVerifyResponse(email=email)
