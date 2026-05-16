@@ -1,11 +1,18 @@
 {
+  "permissions": {
+    "allow": [
+      "mcp__TestSprite__testsprite_check_account_info",
+      "Bash(curl *)",
+      "mcp__TestSprite__testsprite_generate_standardized_prd",
+      "mcp__TestSprite__testsprite_generate_backend_test_plan",
+      "mcp__TestSprite__testsprite_generate_code_and_execute",
+      "mcp__supabase__list_tables",
+      "mcp__supabase__get_publishable_keys",
+      "mcp__supabase__get_project_url"
+    ]
+  },
   "enableAllProjectMcpServers": true,
   "enabledMcpjsonServers": [
     "supabase"
-  ],
-  "permissions": {
-    "allow": [
-      "mcp__TestSprite__testsprite_check_account_info"
-    ]
-  }
+  ]
 }

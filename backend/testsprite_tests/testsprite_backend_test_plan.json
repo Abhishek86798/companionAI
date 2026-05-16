@@ -1,0 +1,52 @@
+[
+  {
+    "id": "TC001",
+    "title": "get health check endpoint returns ok status",
+    "description": "Verify that a GET request to /health returns a 200 status code with the JSON body {\"status\":\"ok\"} indicating the backend is healthy."
+  },
+  {
+    "id": "TC002",
+    "title": "post message endpoint streams ai response for anonymous user",
+    "description": "Test POST /api/v1/message with valid message content and no JWT token to confirm anonymous messaging is allowed and the response is a 200 text/event-stream with streamed tokens followed by a done event."
+  },
+  {
+    "id": "TC003",
+    "title": "post message endpoint enforces rate limit and safety checks for authenticated user",
+    "description": "Send a POST request to /api/v1/message with a valid JWT and safe message content, verify that safety checks pass, rate limiter allows the request, the user message is stored, and the response streams the Hinglish assistant reply with status 200."
+  },
+  {
+    "id": "TC004",
+    "title": "post message endpoint handles crisis content with crisis response",
+    "description": "Send a POST /api/v1/message containing crisis-related content, verify that the safety check triggers the crisis path, AI generation is skipped, a crisis SSE response is returned, and a safety event is logged."
+  },
+  {
+    "id": "TC005",
+    "title": "post message endpoint returns 429 when daily quota exceeded",
+    "description": "Test POST /api/v1/message with a user or anonymous session that has exhausted the daily message quota, verify the rate limiter blocks the request and the response status is 429 Rate limit exceeded."
+  },
+  {
+    "id": "TC006",
+    "title": "get messages endpoint returns paginated conversation history for authenticated user",
+    "description": "Send a GET request to /api/v1/messages/{conversation_id}?page=1 with a valid JWT and owned conversation_id, verify the response is 200 with a paginated ConversationHistoryResponse."
+  },
+  {
+    "id": "TC007",
+    "title": "get messages endpoint returns 401 for missing or invalid jwt",
+    "description": "Send a GET request to /api/v1/messages/{conversation_id} without a valid JWT, verify the response status is 401 Authentication required."
+  },
+  {
+    "id": "TC008",
+    "title": "get memories endpoint returns all memory facts for authenticated user",
+    "description": "Send a GET request to /api/v1/memories with a valid JWT, verify the response is 200 with an ordered MemoriesResponse containing all saved memory facts for the user."
+  },
+  {
+    "id": "TC009",
+    "title": "delete memories endpoint deletes owned memory fact",
+    "description": "Send a DELETE request to /api/v1/memories/{memory_id} with a valid JWT and a memory_id owned by the user, verify the response is 204 No content and the memory fact is removed."
+  },
+  {
+    "id": "TC010",
+    "title": "get persona endpoint returns default persona when none exists",
+    "description": "Send a GET request to /api/v1/persona with a valid JWT when no persona row exists for the user, verify the response is 200 with PersonaResponse containing default Arjun values."
+  }
+]

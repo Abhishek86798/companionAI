@@ -1,0 +1,146 @@
+version: "2"
+type: backend
+tech_stack:
+  - language: Python 3.11
+  - framework: FastAPI
+  - database: Supabase (PostgreSQL)
+  - auth: Supabase JWT (HS256) with PyJWT
+  - ai: OpenRouter (GPT-4o Mini) via openai SDK
+  - monitoring: Sentry
+features:
+  - name: Health Check
+    description: Simple liveness probe
+    files:
+      - app/main.py
+    endpoints:
+      - method: GET
+        path: /health
+        description: Returns {"status":"ok"}
+        auth_required: false
+        response_schema:
+          "200": '{"status": "ok"}'
+    depends_on: []
+
+  - name: Chat / Messaging API
+    description: SSE-streamed AI chat with safety check, rate limiting, memory injection, and anonymous support
+    files:
+      - app/routers/chat.py
+      - app/services/ai.py
+      - app/services/safety.py
+      - app/services/rate_limiter.py
+      - app/services/messages.py
+      - app/services/memory.py
+    endpoints:
+      - method: POST
+        path: /api/v1/message
+        description: Send a message and receive SSE-streamed AI response. Anonymous allowed (no JWT required).
+        auth_required: false
+        request_schema:
+          body:
+            content: string
+            conversation_id: uuid (optional)
+        response_schema:
+          "200": text/event-stream — tokens then done event
+          "429": Rate limit exceeded
+      - method: GET
+        path: /api/v1/messages/{conversation_id}
+        description: Paginated conversation history for authenticated user
+        auth_required: true
+        request_schema:
+          path:
+            conversation_id: uuid
+          query:
+            page: integer (default 1)
+        response_schema:
+          "200": ConversationHistoryResponse
+          "401": Authentication required
+    depends_on:
+      - Authentication
+      - Rate Limiter
+      - Safety Check
+
+  - name: Memories API
+    description: Read and delete extracted memory facts for the authenticated user
+    files:
+      - app/routers/memories.py
+      - app/services/memory.py
+    endpoints:
+      - method: GET
+        path: /api/v1/memories
+        description: List all memory facts for the current user, ordered by category
+        auth_required: true
+        response_schema:
+          "200": MemoriesResponse
+          "401": Authentication required
+      - method: DELETE
+        path: /api/v1/memories/{memory_id}
+        description: Delete a specific memory fact (ownership enforced)
+        auth_required: true
+        request_schema:
+          path:
+            memory_id: uuid
+        response_schema:
+          "204": No content
+          "401": Authentication required
+          "404": Memory not found
+    depends_on:
+      - Authentication
+
+  - name: Persona API
+    description: Get and upsert companion persona settings (name, tone, expectation, open_field) per user
+    files:
+      - app/routers/persona.py
+      - app/models/schemas.py
+    endpoints:
+      - method: GET
+        path: /api/v1/persona
+        description: Retrieve saved persona; returns Arjun defaults if no row exists
+        auth_required: true
+        response_schema:
+          "200": PersonaResponse (companion_name, tone, expectation, open_field)
+          "401": Authentication required
+      - method: POST
+        path: /api/v1/persona
+        description: Upsert persona settings for the current user
+        auth_required: true
+        request_schema:
+          body:
+            companion_name: string (optional)
+            tone: string (optional)
+            expectation: string (optional)
+            open_field: string (optional)
+        response_schema:
+          "200": PersonaResponse
+          "401": Authentication required
+    depends_on:
+      - Authentication
+
+  - name: Authentication
+    description: JWT verification via Supabase secret (HS256) with network fallback; lazy public.users row creation
+    files:
+      - app/dependencies.py
+    endpoints: []
+    depends_on: []
+
+  - name: Rate Limiter
+    description: Per-user and per-anon-session daily message quota enforced server-side
+    files:
+      - app/services/rate_limiter.py
+      - app/config.py
+    endpoints: []
+    depends_on: []
+
+  - name: Safety Check
+    description: Keyword + semantic check on every message before AI call; logs safety events
+    files:
+      - app/services/safety.py
+    endpoints: []
+    depends_on: []
+
+known_limitations:
+  - issue: GET /persona returns defaults only when result.data is None; falsy empty dict also falls through correctly but depends on maybe_single() behaviour
+    location: app/routers/persona.py
+    impact: Edge case if Supabase returns empty object instead of None
+  - issue: Anonymous users get no conversation history or memory persistence
+    location: app/routers/chat.py
+    impact: By design; anon sessions are stateless
